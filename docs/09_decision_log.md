@@ -265,6 +265,34 @@ property of the file split that isn't obvious.
 
 ---
 
+## D14. Cleaning does not drop columns; column trims happen once at the raw → 3NF boundary
+
+**Date**: 2026-08-06
+
+**Decision**: `clean.py` performs structural cleaning only — deduplication, type coercion,
+whitespace trimming, value normalisation, and one derived column. Every source column survives
+into `data/processed/` and therefore into the `raw` schema. Columns are dropped in exactly one
+place: the `raw → 3nf` migrations.
+
+**Why**: this project has two things that both sound like "cleaning" — removing bad rows and
+removing unwanted columns. Doing both in the same step makes it impossible to tell later
+whether a missing column was a deliberate scope decision or a casualty of a cleaning rule. It
+also breaks the traceability requirement: a warehouse row can only be traced back to a raw
+record if the raw record is complete.
+
+Keeping `highlights` and `ingredients` in `raw` costs almost nothing — they live only in the
+8,494-row product file (8.1 MB processed), not the 1.09M-row review file — while preserving the
+ability to answer "what did the source actually say?" without re-reading the CSVs.
+
+This mirrors the reference project's own rule: its `raw` schema retained every column from every
+source file, with drops applied explicitly and once at the `raw → staging` boundary.
+
+**Consequence for D3**: `highlights` is not deleted by `clean.py` as originally worded — it
+reaches `raw` and is dropped at the `raw → 3nf` boundary along with `ingredients` and the sparse
+pricing columns. The scoping decision is unchanged; only the place it takes effect moved.
+
+---
+
 ## Format for future entries
 
 New decisions follow the same shape: **Decision** (what was chosen), **Why** (the reasoning,
