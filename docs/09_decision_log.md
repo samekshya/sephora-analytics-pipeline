@@ -293,6 +293,38 @@ pricing columns. The scoping decision is unchanged; only the place it takes effe
 
 ---
 
+## D15. The fact load reads and writes in chunks
+
+**Date**: 2026-08-06
+
+**Decision**: `load_fact_from_staging` in the Airflow DAG reads `stg_fact_transformed` through
+a server-side cursor in 100,000-row chunks and loads each chunk, rather than materialising the
+whole batch.
+
+**Why**: the first full-reload DAG run was SIGKILLed at exactly this task. Every other task
+succeeded; the log ended mid-task with no traceback, and the scheduler recorded
+`exit_code=<Negsignal.SIGKILL: -9>` — the signature of the process being killed rather than
+failing.
+
+The cause is that the task held two full copies of the batch at once: a DataFrame of 1,043,868
+rows, and the list of tuples `_records()` builds from it for `execute_values`. `pipeline.py`
+does the same thing and survives, because it runs on the host with the whole machine
+available; the containerised task worker did not.
+
+`iter_staged_rows` uses a named (server-side) cursor so Postgres streams the result instead of
+shipping all of it before the first row is available, and caps peak memory at the chunk size
+regardless of how large the batch is. That is what makes the same task work for both a
+1,043,868-row full reload and a 49,503-row incremental batch.
+
+Two connections are required: a named cursor holds its transaction open for the life of the
+iteration, so committing writes on the same connection would invalidate it mid-loop.
+
+**Worth recording** because the local runner and the DAG ran identical code and only one of
+them failed. "It works on my machine" was literally true, and the difference was the memory
+available to the process, not the logic.
+
+---
+
 ## Format for future entries
 
 New decisions follow the same shape: **Decision** (what was chosen), **Why** (the reasoning,
