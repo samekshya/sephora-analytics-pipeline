@@ -293,6 +293,81 @@ pricing columns. The scoping decision is unchanged; only the place it takes effe
 
 ---
 
+## D15. The fact load reads and writes in chunks
+
+**Date**: 2026-08-06
+
+**Decision**: `load_fact_from_staging` in the Airflow DAG reads `stg_fact_transformed` through
+a server-side cursor in 100,000-row chunks and loads each chunk, rather than materialising the
+whole batch.
+
+**Why**: the first full-reload DAG run was SIGKILLed at exactly this task. Every other task
+succeeded; the log ended mid-task with no traceback, and the scheduler recorded
+`exit_code=<Negsignal.SIGKILL: -9>` — the signature of the process being killed rather than
+failing.
+
+The cause is that the task held two full copies of the batch at once: a DataFrame of 1,043,868
+rows, and the list of tuples `_records()` builds from it for `execute_values`. `pipeline.py`
+does the same thing and survives, because it runs on the host with the whole machine
+available; the containerised task worker did not.
+
+`iter_staged_rows` uses a named (server-side) cursor so Postgres streams the result instead of
+shipping all of it before the first row is available, and caps peak memory at the chunk size
+regardless of how large the batch is. That is what makes the same task work for both a
+1,043,868-row full reload and a 49,503-row incremental batch.
+
+Two connections are required: a named cursor holds its transaction open for the life of the
+iteration, so committing writes on the same connection would invalidate it mid-loop.
+
+**Worth recording** because the local runner and the DAG ran identical code and only one of
+them failed. "It works on my machine" was literally true, and the difference was the memory
+available to the process, not the logic.
+
+---
+
+## D16. Category analysis runs at the secondary level, because every reviewed product is Skincare
+
+**Date**: 2026-08-06
+
+**Decision**: business question 1's category half is answered with `secondary_category`, not
+`primary_category`. The dashboard's category visual groups on secondary. The KPI row states
+products reviewed alongside products in catalogue so the gap is visible rather than implied.
+
+**Why**: found while cross-checking the analytics views against the loaded warehouse. Grouping
+1,093,371 reviews by `primary_category` returned **one row**:
+
+```
+ primary_category | reviewed_products | reviews
+------------------+-------------------+----------
+ Skincare         |             2,351 | 1,093,371
+```
+
+The catalogue holds 8,494 products across 9 primary categories — Skincare 2,420, Makeup 2,369,
+Hair 1,464, Fragrance 1,432, and five smaller ones. But **only Skincare products have any
+reviews at all**, and 2,351 of the 2,420 Skincare products are covered. The other 6,074
+products have zero.
+
+This is inherent to the source, not a pipeline fault: the dataset is *Sephora Products and
+Skincare **Reviews*** — the product catalogue was scraped in full, the review scrape covers
+skincare only. The earlier profiling recorded "2,351 of 8,494 products have reviews" without
+noticing that all 2,351 fall in one category.
+
+**Consequences**:
+- `primary_category` is constant across the fact table, so a chart of it is a single bar.
+  `secondary_category` is the level that varies usefully — Moisturizers 297,201 reviews,
+  Treatments 221,871, Cleansers 200,477, Eye Care 74,966, Masks 70,483, Sunscreen 41,126.
+- `vw_rating_by_skin_type`'s `WHERE primary_category = 'Skincare'` is now a no-op. It stays
+  as a guard: if a future load ever brought in makeup reviews, the view would keep answering
+  the question it claims to answer rather than silently widening.
+- Any statement of the form "which categories rate best across Sephora" is unsupportable from
+  this data and must not appear on the dashboard. The honest framing is "within skincare".
+
+**Worth recording** because the pipeline was working perfectly and the number was still
+misleading. Every row count reconciled; the flaw was in what the data covers, which no
+integrity check can catch.
+
+---
+
 ## Format for future entries
 
 New decisions follow the same shape: **Decision** (what was chosen), **Why** (the reasoning,

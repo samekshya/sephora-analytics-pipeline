@@ -136,9 +136,9 @@ Indexes on all four fact FK columns. **No `brand_key` on the fact table** (D11).
 | 3. OLTP raw + 3NF + staging, `ingest.py` | **Done** — 15 migrations applied, reconciliation clean, 0 row gap end to end |
 | 4. DW star schema migrations | **Done** — 7 migrations, 5 dims + fact_reviews |
 | 5. ETL package + `pipeline.py` | **Done** — all 4 run modes verified; 8/8 quality fault-injection tests pass |
-| 6. Airflow staged DAG | Not started |
-| 7. Analytics views + Power BI dashboard | Not started |
-| 8. README / decision log / checklist | Not started |
+| 6. Airflow staged DAG | **Done** — full and incremental runs both green, all 15 tasks |
+| 7. Analytics views | **Done** — 6 views + cross-check script. **Power BI dashboard still to build** (needs the desktop app) |
+| 8. README / decision log / checklist | **Done** — 16 decisions logged |
 
 ---
 
@@ -203,7 +203,22 @@ Fill in from actual runs. Never estimate here — if it isn't measured, leave it
 | **Idempotency, empty case** (re-run incremental) | watermark 2023-03-21 → **0 extracted**, gate skipped, 0 inserted |
 | **Final warehouse** | **fact_reviews 1,093,371** — matches `staging.review` exactly. Date range 2008-08-28 → 2023-03-21, avg rating 4.2990 |
 | **Quality fault injection** (`tests/test_quality.py`) | 8 passed, 0 failed |
-| Airflow full / incremental / re-run | _pending_ |
+| **Airflow, full reload** | All 15 tasks green; 1,043,868 fact rows. `load_fact_from_staging` SIGKILLed on the first attempt and succeeded after chunking (D15) |
+| **Airflow, incremental** | All 15 tasks green in **22 seconds**; 49,503 rows → 1,093,371 total |
+| **Staging cleanup** | All 6 staging tables at 0 rows after both runs (`trigger_rule="all_done"`) |
+| **Analytics views** | 6 views created and cross-checked against the fact table |
+
+### Headline analytics results (for the presentation)
+
+| Finding | Detail |
+|---|---|
+| Overall | 1,093,371 reviews · avg rating **4.2990** · **83.99%** recommend |
+| **BQ3 — price vs satisfaction is an inverted U** | Under $15 **4.2383** → $15-30 4.2756 → $30-50 4.3055 → **$50-100 4.3335 (peak)** → $100+ **4.2708 (falls back)**. Rating variance also falls steadily as price rises (stddev 1.2211 → 1.0996) |
+| BQ1a — best brands (≥500 reviews) | MARA 4.8608 · DAMDAM 4.7394 · Dr. Lara Devgan 4.7164 |
+| BQ1a — worst brands (≥500 reviews) | Topicals 3.6590 · DERMAFLASH 3.7856 · Isle of Paradise 3.8601 |
+| BQ1b — categories (secondary, see D16) | Moisturizers 297,201 · Treatments 221,871 · Cleansers 200,477 · Eye Care 74,966 · Masks 70,483 · Sunscreen 41,126. Best-rated Cleansers 4.3443, worst Sunscreen 4.1665 |
+| BQ2 — trend | Volume grew 2,760 (2008) → 215,278 (2020), then eased. Rating dipped to **4.2075 in 2020** and recovered to 4.3384 by 2022 |
+| BQ4 — skin type | Combination 4.3092 → dry 4.2911 → normal 4.2822 → **oily 4.2708**. Real but small spread (0.038) — worth stating as a weak signal, not a headline |
 
 ---
 
