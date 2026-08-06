@@ -1,0 +1,41 @@
+# --- Secrets ---
+.env
+*.env
+!.env.example
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+venv/
+env/
+
+# --- Data (source CSVs are ~500MB, and generated output shouldn't be committed) ---
+data/raw/
+data/processed/
+*.csv
+
+# --- Reference material (classmate's project, not part of this repo) ---
+reference/
+
+# --- Airflow ---
+dags/__pycache__/
+logs/
+airflow.db
+airflow.cfg
+airflow-webserver.pid
+
+# --- Jupyter ---
+.ipynb_checkpoints/
+
+# --- OS / editor junk ---
+.DS_Store
+Thumbs.db
+.vscode/
+*.swp
+
+# --- Local logs / output ---
+*.log
+output/
