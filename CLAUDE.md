@@ -134,8 +134,8 @@ Indexes on all four fact FK columns. **No `brand_key` on the fact table** (D11).
 | 1. Explore (`explore.py`, problem statement doc) | **Done** — 14 checks, all run clean; findings in `docs/problem statement and data sources.md`, decisions D1–D13 in `docs/09_decision_log.md` |
 | 2. Clean (`clean.py` → `data/processed/`) | **Done** — run end-to-end in 24s; `data/processed/products.csv` (8.1 MB) and `reviews.csv` (546.7 MB) |
 | 3. OLTP raw + 3NF + staging, `ingest.py` | **Done** — 15 migrations applied, reconciliation clean, 0 row gap end to end |
-| 4. DW star schema migrations | Not started |
-| 5. ETL package + `pipeline.py` | Not started |
+| 4. DW star schema migrations | **Done** — 7 migrations, 5 dims + fact_reviews |
+| 5. ETL package + `pipeline.py` | **Done** — all 4 run modes verified; 8/8 quality fault-injection tests pass |
 | 6. Airflow staged DAG | Not started |
 | 7. Analytics views + Power BI dashboard | Not started |
 | 8. README / decision log / checklist | Not started |
@@ -197,10 +197,12 @@ Fill in from actual runs. Never estimate here — if it isn't measured, leave it
 | **3NF row counts** | brand 304 · category 174 · product 8,494 · author 503,216 · review 1,093,371 · skin_tone 13 · skin_type 4 · eye_color 5 · hair_color 7 |
 | **Staging row counts** | product 8,494 · review 1,093,371 (date range 2008-08-28 → 2023-03-21) |
 | raw → 3nf → staging reconciliation | _pending_ |
-| Full load (`pipeline.py --full-reload`) | _pending_ |
-| Incremental load (`pipeline.py`) | _pending_ |
-| Idempotency, real case (re-run full, no watermark reset) | _pending_ |
-| Idempotency, empty case (re-run incremental) | _pending_ |
+| **Full load** (`pipeline.py --full-reload`) | 1,043,868 fact rows inserted; dims 304 / 8,494 / 503,216 / 1,896 / 5,379. Fact load 62s |
+| **Idempotency, real case** (re-run full) | 1,043,868 offered, **0 inserted** everywhere |
+| **Incremental load** (`pipeline.py`) | watermark 2022-12-31 → 49,503 extracted, **49,503 inserted** |
+| **Idempotency, empty case** (re-run incremental) | watermark 2023-03-21 → **0 extracted**, gate skipped, 0 inserted |
+| **Final warehouse** | **fact_reviews 1,093,371** — matches `staging.review` exactly. Date range 2008-08-28 → 2023-03-21, avg rating 4.2990 |
+| **Quality fault injection** (`tests/test_quality.py`) | 8 passed, 0 failed |
 | Airflow full / incremental / re-run | _pending_ |
 
 ---
