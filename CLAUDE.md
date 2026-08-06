@@ -58,9 +58,13 @@ recording a decision-log entry.
 
 ## 3. Stack
 
-- **Python 3.13.12** — pandas 3.0.3, psycopg2, python-dotenv
-- **PostgreSQL 16** — two databases: `sephora_oltp` (schemas `raw`, `3nf`, `staging`) and
-  `sephora_dw` (schema `dw`, star schema)
+- **Python 3.13.12** — pandas 3.0.3, psycopg2 2.9.12, python-dotenv
+- **PostgreSQL 16** — in Docker, **host port 5434**, compose project `leapfrog-sephora`,
+  volume `leapfrog-sephora_sephora_pgdata`. Two databases: `sephora_oltp` (schemas `raw`,
+  `3nf`, `staging`) and `sephora_dw` (schema `dw`, star schema).
+  > Ports 5432 and 5433 on this machine belong to unrelated stacks (`course_postgres` and a
+  > separate Sephora project at `D:\Data Projects\sephora-analytics-de-project`). This project
+  > uses its own container on 5434 — never point it at 5432 or 5433.
 - **Apache Airflow 3.3.0** — Docker Compose, LocalExecutor, staged DAG, watermark incremental
 - **Power BI Desktop** — 2-page dashboard, live Postgres connection
 - **SQL** — append-only numbered migrations
@@ -129,7 +133,7 @@ Indexes on all four fact FK columns. **No `brand_key` on the fact table** (D11).
 | 0. Project plan + CLAUDE.md | Done |
 | 1. Explore (`explore.py`, problem statement doc) | **Done** — 14 checks, all run clean; findings in `docs/problem statement and data sources.md`, decisions D1–D13 in `docs/09_decision_log.md` |
 | 2. Clean (`clean.py` → `data/processed/`) | **Done** — run end-to-end in 24s; `data/processed/products.csv` (8.1 MB) and `reviews.csv` (546.7 MB) |
-| 3. OLTP raw + 3NF + staging, `ingest.py` | Not started |
+| 3. OLTP raw + 3NF + staging, `ingest.py` | **Done** — 15 migrations applied, reconciliation clean, 0 row gap end to end |
 | 4. DW star schema migrations | Not started |
 | 5. ETL package + `pipeline.py` | Not started |
 | 6. Airflow staged DAG | Not started |
@@ -188,6 +192,10 @@ Fill in from actual runs. Never estimate here — if it isn't measured, leave it
 | **Cleaning — products** | 8,494 in → 8,494 out (0 dropped); 16,072 cells whitespace-trimmed; `product_id` unique, `brand_id` → `brand_name` 1:1 both asserted |
 | **Cleaning — reviews** | 1,094,411 in → **1,093,371** out (1,040 duplicates removed); 1,030,753 cells trimmed; 4,859 `eye_color` `'Grey'` → `'gray'`; 70 `skin_tone` `'notSureST'` → null; 0 unparseable dates; 0 `(source_row_id, product_id)` collisions after dedup |
 | **Expected fact-table counts** (post-dedup) | full load `< 2023-01-01`: **1,043,868** · incremental `>= 2023-01-01`: **49,503** |
+| **Ingest** (`ingest.py`, COPY) | `raw.product_info` 8,494 · `raw.reviews` 1,093,371 — loaded in 15s, counts asserted against `clean.py` output |
+| **raw → 3nf → staging** | 0 row gap on both products and reviews; all 6 integrity checks return 0 |
+| **3NF row counts** | brand 304 · category 174 · product 8,494 · author 503,216 · review 1,093,371 · skin_tone 13 · skin_type 4 · eye_color 5 · hair_color 7 |
+| **Staging row counts** | product 8,494 · review 1,093,371 (date range 2008-08-28 → 2023-03-21) |
 | raw → 3nf → staging reconciliation | _pending_ |
 | Full load (`pipeline.py --full-reload`) | _pending_ |
 | Incremental load (`pipeline.py`) | _pending_ |
