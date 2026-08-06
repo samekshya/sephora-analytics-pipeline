@@ -127,7 +127,7 @@ Indexes on all four fact FK columns. **No `brand_key` on the fact table** (D11).
 | Stage | State |
 |---|---|
 | 0. Project plan + CLAUDE.md | Done |
-| 1. Explore (`explore.py`, problem statement doc) | Not started |
+| 1. Explore (`explore.py`, problem statement doc) | **Done** — 14 checks, all run clean; findings in `docs/problem statement and data sources.md`, decisions D1–D13 in `docs/09_decision_log.md` |
 | 2. Clean (`clean.py` → `data/processed/`) | Not started |
 | 3. OLTP raw + 3NF + staging, `ingest.py` | Not started |
 | 4. DW star schema migrations | Not started |
@@ -164,6 +164,12 @@ Fill in from actual runs. Never estimate here — if it isn't measured, leave it
 | Authors whose reviewer profile is **not** constant | 22,503 (4.47%) |
 | Reviews written by those authors | 149,788 (13.69%) |
 | Distinct reviewer-profile combinations | 2,003 (of 4,200 possible) |
+| Reviews before the 2023-01-01 cutoff (full load, pre-dedup) | 1,044,880 |
+| `review_text` total volume | 350 MB (min 8, median 263, mean 321, max 6,448 chars) |
+| Rows where `helpfulness IS NULL` ⟺ `total_feedback_count = 0` disagree | 0 |
+| Rows where `pos + neg != total` feedback | 0 |
+| Products with reviews (of 8,494 catalogue products) | 2,351 |
+| `highlights`: distinct tags / product-tag pairs | 112 / 30,204 (descoped, D3) |
 
 ### Known data-quality issues to fix in `clean.py`
 
