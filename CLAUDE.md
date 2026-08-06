@@ -128,7 +128,7 @@ Indexes on all four fact FK columns. **No `brand_key` on the fact table** (D11).
 |---|---|
 | 0. Project plan + CLAUDE.md | Done |
 | 1. Explore (`explore.py`, problem statement doc) | **Done** — 14 checks, all run clean; findings in `docs/problem statement and data sources.md`, decisions D1–D13 in `docs/09_decision_log.md` |
-| 2. Clean (`clean.py` → `data/processed/`) | Not started |
+| 2. Clean (`clean.py` → `data/processed/`) | **Done** — run end-to-end in 24s; `data/processed/products.csv` (8.1 MB) and `reviews.csv` (546.7 MB) |
 | 3. OLTP raw + 3NF + staging, `ingest.py` | Not started |
 | 4. DW star schema migrations | Not started |
 | 5. ETL package + `pipeline.py` | Not started |
@@ -185,7 +185,9 @@ Fill in from actual runs. Never estimate here — if it isn't measured, leave it
 
 | Run | Result |
 |---|---|
-| Cleaning: rows in → out | _pending_ |
+| **Cleaning — products** | 8,494 in → 8,494 out (0 dropped); 16,072 cells whitespace-trimmed; `product_id` unique, `brand_id` → `brand_name` 1:1 both asserted |
+| **Cleaning — reviews** | 1,094,411 in → **1,093,371** out (1,040 duplicates removed); 1,030,753 cells trimmed; 4,859 `eye_color` `'Grey'` → `'gray'`; 70 `skin_tone` `'notSureST'` → null; 0 unparseable dates; 0 `(source_row_id, product_id)` collisions after dedup |
+| **Expected fact-table counts** (post-dedup) | full load `< 2023-01-01`: **1,043,868** · incremental `>= 2023-01-01`: **49,503** |
 | raw → 3nf → staging reconciliation | _pending_ |
 | Full load (`pipeline.py --full-reload`) | _pending_ |
 | Incremental load (`pipeline.py`) | _pending_ |
@@ -236,6 +238,10 @@ Full reasoning lives in `docs/09_decision_log.md`. Summary:
   Verified: the CSV row index restarts per file, but each product appears in exactly one file
   (the files are split by product range), so the pair collides **0 times** across all
   1,094,411 rows.
+- **D14** `clean.py` does **not** drop columns. Every source column reaches `raw` for
+  traceability; column trims (`highlights`, `ingredients`, sparse pricing columns) happen once,
+  explicitly, at the `raw → 3nf` boundary. Mixing row-cleaning and column-dropping in one step
+  makes it impossible to tell later which was a scope decision and which was a cleaning rule.
 
 ### Deliberate deviations from the reference project
 
