@@ -42,13 +42,19 @@ REVIEWER_ATTRS = ['skin_tone', 'skin_type', 'eye_color', 'hair_color']
 PRODUCT_FLAGS = ['limited_edition', 'new', 'online_only', 'out_of_stock',
                  'sephora_exclusive']
 
-PRODUCT_NUMERICS = ['price_usd', 'value_price_usd', 'sale_price_usd', 'rating',
-                    'reviews', 'loves_count', 'child_count', 'child_max_price',
-                    'child_min_price']
+# Integer and float columns are coerced separately, and integers use pandas'
+# nullable Int64 rather than float64. A nullable int column read as float64
+# writes back as "11.0", which COPY rejects against an INTEGER column — the
+# decimal point is not a formatting detail, it changes the type.
+PRODUCT_INTEGERS = ['brand_id', 'loves_count', 'reviews', 'child_count']
 
-REVIEW_NUMERICS = ['rating', 'helpfulness', 'total_feedback_count',
-                   'total_neg_feedback_count', 'total_pos_feedback_count',
-                   'price_usd']
+PRODUCT_FLOATS = ['rating', 'price_usd', 'value_price_usd', 'sale_price_usd',
+                  'child_max_price', 'child_min_price']
+
+REVIEW_INTEGERS = ['source_row_id', 'rating', 'total_feedback_count',
+                   'total_neg_feedback_count', 'total_pos_feedback_count']
+
+REVIEW_FLOATS = ['helpfulness', 'price_usd']
 
 os.makedirs(LOG_DIR, exist_ok=True)
 
@@ -115,8 +121,11 @@ def clean_products():
                          f'brand cannot be keyed on brand_id')
     logger.info('products: brand_id -> brand_name is 1:1')
 
-    for col in PRODUCT_NUMERICS:
+    for col in PRODUCT_FLOATS:
         df[col] = pd.to_numeric(df[col], errors='coerce')
+
+    for col in PRODUCT_INTEGERS:
+        df[col] = pd.to_numeric(df[col], errors='coerce').astype('Int64')
 
     for col in PRODUCT_FLAGS:
         df[col] = df[col].astype('boolean')
@@ -177,8 +186,11 @@ def clean_reviews():
                 f'(a placeholder, not a skin tone)')
 
     # --- type coercion ---
-    for col in REVIEW_NUMERICS:
+    for col in REVIEW_FLOATS:
         df[col] = pd.to_numeric(df[col], errors='coerce')
+
+    for col in REVIEW_INTEGERS:
+        df[col] = pd.to_numeric(df[col], errors='coerce').astype('Int64')
 
     df['submission_time'] = pd.to_datetime(df['submission_time'], errors='coerce')
     unparseable = int(df['submission_time'].isna().sum())

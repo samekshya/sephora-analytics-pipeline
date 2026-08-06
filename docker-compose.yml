@@ -1,0 +1,41 @@
+# Postgres for this project only.
+#
+# Deliberately isolated: its own compose project name, its own named volume, and
+# port 5434 on the host. Ports 5432 and 5433 are already taken by unrelated
+# stacks on this machine, and sharing an instance between projects makes it too
+# easy to drop the wrong database.
+#
+# Both databases (sephora_oltp and sephora_dw) live in this one instance —
+# separate databases, per D7, not separate servers.
+#
+#   docker compose up -d
+#   docker compose down          # stops, keeps data
+#   docker compose down -v       # stops AND deletes the volume — destroys both databases
+
+name: leapfrog-sephora
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: leapfrog_sephora_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${OLTP_DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${OLTP_DB_PASSWORD:-postgres}
+      # The OLTP database is created by the image on first boot; sephora_dw is
+      # created by the init script below, since the image only creates one.
+      POSTGRES_DB: ${OLTP_DB_NAME:-sephora_oltp}
+    ports:
+      - "5434:5432"
+    volumes:
+      - sephora_pgdata:/var/lib/postgresql/data
+      - ./sql/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${OLTP_DB_USER:-postgres} -d ${OLTP_DB_NAME:-sephora_oltp}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+volumes:
+  sephora_pgdata:
