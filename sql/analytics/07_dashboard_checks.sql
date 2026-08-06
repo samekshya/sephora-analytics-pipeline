@@ -22,13 +22,25 @@ ORDER BY avg_rating ASC
 LIMIT 10;
 
 \echo ''
-\echo '=== BQ1b: primary categories by volume ==='
+\echo '=== coverage: which primary categories actually have reviews? ==='
+-- Every reviewed product is Skincare (D16). Stated explicitly rather than left
+-- for a viewer to infer from a single-bar chart.
 SELECT primary_category,
-       sum(review_count)                                                AS reviews,
-       sum(product_count)                                               AS products,
-       round(sum(avg_rating * review_count) / sum(review_count), 4)     AS avg_rating
+       sum(review_count)  AS reviews,
+       sum(product_count) AS products_reviewed
 FROM dw.vw_rating_by_category
 GROUP BY primary_category
+ORDER BY reviews DESC;
+
+\echo ''
+\echo '=== BQ1b: secondary categories by volume (the level that varies) ==='
+SELECT secondary_category,
+       sum(review_count)                                                AS reviews,
+       sum(product_count)                                               AS products,
+       round(sum(avg_rating * review_count) / sum(review_count), 4)     AS avg_rating,
+       round(sum(recommend_pct * review_count) / sum(review_count), 2)  AS recommend_pct
+FROM dw.vw_rating_by_category
+GROUP BY secondary_category
 ORDER BY reviews DESC;
 
 \echo ''

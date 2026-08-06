@@ -2,8 +2,13 @@
 --
 -- Grouped on all three levels rather than rolled up, because the levels are not
 -- a real hierarchy (D1) — one secondary category sits under up to 7 primaries,
--- so a rollup would double-count. The dashboard can aggregate to primary alone
--- when it wants a coarser view.
+-- so a rollup would double-count.
+--
+-- The dashboard must group on secondary_category, NOT primary. Every reviewed
+-- product in this dataset is Skincare (D16): the review scrape covers skincare
+-- only, so primary_category is constant across all 1,093,371 reviews and a
+-- chart of it is a single bar. secondary_category is the level that actually
+-- varies - Moisturizers, Treatments, Cleansers, Eye Care, Masks, Sunscreen.
 CREATE OR REPLACE VIEW dw.vw_rating_by_category AS
 SELECT
     p.primary_category,

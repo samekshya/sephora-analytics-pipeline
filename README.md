@@ -21,10 +21,17 @@ dataset using PostgreSQL, Python, Apache Airflow and Power BI.
 
 The warehouse is structured to answer:
 
-1. Which brands and categories earn the highest ratings, and which underperform?
+1. Which brands and skincare categories earn the highest ratings, and which underperform?
 2. How do review volume and average rating trend over time?
 3. Does price predict satisfaction — do expensive products actually rate better?
 4. Do reviewers with different skin types rate the same skincare products differently?
+
+> **Scope note.** The catalogue covers 8,494 products across 9 categories, but only
+> **Skincare** products carry reviews — 2,351 of them, holding all 1,093,371 reviews. The
+> source is *Sephora Products and Skincare Reviews*: the catalogue was scraped in full, the
+> reviews only for skincare. Category analysis therefore runs at the **secondary** level
+> (Moisturizers, Treatments, Cleansers…), and no claim is made about Sephora as a whole. See
+> D16.
 
 ## Tech stack
 
@@ -105,7 +112,7 @@ dataset description.
 | Reviewers | 503,216 |
 | Brands | 304 |
 | Date range | 2008-08-28 → 2023-03-21 |
-| Products with at least one review | 2,351 of 8,494 |
+| Products with at least one review | 2,351 of 8,494 — **all of them Skincare** (D16) |
 | Rating distribution | 5★ 698,951 · 4★ 199,389 · 3★ 81,816 · 2★ 53,032 · 1★ 61,223 |
 
 Full profiling, verified relationships and quality findings:

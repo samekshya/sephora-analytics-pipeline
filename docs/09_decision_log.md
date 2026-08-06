@@ -325,6 +325,49 @@ available to the process, not the logic.
 
 ---
 
+## D16. Category analysis runs at the secondary level, because every reviewed product is Skincare
+
+**Date**: 2026-08-06
+
+**Decision**: business question 1's category half is answered with `secondary_category`, not
+`primary_category`. The dashboard's category visual groups on secondary. The KPI row states
+products reviewed alongside products in catalogue so the gap is visible rather than implied.
+
+**Why**: found while cross-checking the analytics views against the loaded warehouse. Grouping
+1,093,371 reviews by `primary_category` returned **one row**:
+
+```
+ primary_category | reviewed_products | reviews
+------------------+-------------------+----------
+ Skincare         |             2,351 | 1,093,371
+```
+
+The catalogue holds 8,494 products across 9 primary categories — Skincare 2,420, Makeup 2,369,
+Hair 1,464, Fragrance 1,432, and five smaller ones. But **only Skincare products have any
+reviews at all**, and 2,351 of the 2,420 Skincare products are covered. The other 6,074
+products have zero.
+
+This is inherent to the source, not a pipeline fault: the dataset is *Sephora Products and
+Skincare **Reviews*** — the product catalogue was scraped in full, the review scrape covers
+skincare only. The earlier profiling recorded "2,351 of 8,494 products have reviews" without
+noticing that all 2,351 fall in one category.
+
+**Consequences**:
+- `primary_category` is constant across the fact table, so a chart of it is a single bar.
+  `secondary_category` is the level that varies usefully — Moisturizers 297,201 reviews,
+  Treatments 221,871, Cleansers 200,477, Eye Care 74,966, Masks 70,483, Sunscreen 41,126.
+- `vw_rating_by_skin_type`'s `WHERE primary_category = 'Skincare'` is now a no-op. It stays
+  as a guard: if a future load ever brought in makeup reviews, the view would keep answering
+  the question it claims to answer rather than silently widening.
+- Any statement of the form "which categories rate best across Sephora" is unsupportable from
+  this data and must not appear on the dashboard. The honest framing is "within skincare".
+
+**Worth recording** because the pipeline was working perfectly and the number was still
+misleading. Every row count reconciled; the flaw was in what the data covers, which no
+integrity check can catch.
+
+---
+
 ## Format for future entries
 
 New decisions follow the same shape: **Decision** (what was chosen), **Why** (the reasoning,
