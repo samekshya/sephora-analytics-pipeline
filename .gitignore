@@ -27,6 +27,18 @@ airflow.db
 airflow.cfg
 airflow-webserver.pid
 
+# --- Test / tooling artifacts ---
+.pytest_cache/
+.coverage
+htmlcov/
+
+# --- Streamlit local state ---
+.streamlit/secrets.toml
+
+# --- Scratch / render output ---
+tmp/
+scratch/
+
 # --- Jupyter ---
 .ipynb_checkpoints/
 
