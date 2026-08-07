@@ -385,6 +385,38 @@ def data_quality_panel():
 
 
 # --------------------------------------------------------------------------
+# Presentation
+# --------------------------------------------------------------------------
+
+# One line, plain language, no jargon. Someone who has never seen this project
+# should be able to read the top of the page and know what question is being
+# answered before they look at a single chart.
+STRAPLINE = (
+  "**1.09 million Sephora skincare reviews — what people actually rate well, "
+  "as opposed to what they merely want.**"
+)
+
+
+def page_header(title: str, intro: str):
+  """Title block used by both pages, so they open the same way."""
+  st.title(title)
+  st.markdown(STRAPLINE)
+  st.caption(intro)
+  st.divider()
+
+
+def section(heading: str, takeaway: str):
+  """A section heading and the one line a reader should leave it with.
+
+  Every section gets the same shape - heading, then what it is for - so the
+  page reads consistently instead of some questions being introduced and
+  others appearing as a bare chart.
+  """
+  st.subheader(heading)
+  st.markdown(f"*{takeaway}*")
+
+
+# --------------------------------------------------------------------------
 # Sidebar — the interactive filters
 # --------------------------------------------------------------------------
 
@@ -444,6 +476,23 @@ def sidebar_filters():
     "Click Refresh after running the Airflow DAG to see new rows appear."
   )
 
+  st.sidebar.divider()
+  with st.sidebar.expander("How to read this"):
+    st.markdown(
+      "- **Truncated y-axes are deliberate and always labelled.** Most effects "
+      "in this data are a tenth of a star or less. A zero-based axis would "
+      "render them as identical bars and hide the finding; the caption under "
+      "every truncated chart says the spread it is showing.\n"
+      "- **Review floors matter more than they look.** Averages over small "
+      "groups are noise. Where a floor applies there is a control for it, so "
+      "you can watch the noise drop out instead of taking the floor on trust.\n"
+      "- **`Unknown` is a category, not a gap.** It means the reviewer declined "
+      "to answer. Filtering it out would overstate how much this data knows.\n"
+      "- **Every number is queried live from `sephora_dw`** and reproducible "
+      "with `sql/validation/dashboard_checks.sql`. If they disagree, this "
+      "dashboard is wrong."
+    )
+
   return selected_categories, date_range, min_reviews
 
 
@@ -452,7 +501,12 @@ def sidebar_filters():
 # --------------------------------------------------------------------------
 
 def page_overview(categories, date_range, min_reviews):
-  st.title("Sephora Skincare Reviews — Overview")
+  page_header(
+    "Sephora Skincare Reviews — Overview",
+    "Where the ratings sit overall, how they have moved over fifteen years, and "
+    "which brands and categories sit at each end. Deep dive has the harder "
+    "questions: hype, price and who is doing the rating.",
+  )
 
   k = kpi_row()
   c1, c2, c3, c4, c5 = st.columns(5)
@@ -478,7 +532,9 @@ def page_overview(categories, date_range, min_reviews):
   st.divider()
 
   # ---- BQ5: volume over time -------------------------------------------
-  st.subheader("BQ5 — How do review volume and rating trend over time?")
+  section("BQ5 — How do review volume and rating trend over time?",
+          "Volume grew for twelve years then eased; the average rating dipped "
+          "in 2020 and recovered.")
 
   trend = q("""
     SELECT month_start, review_count, avg_rating, rolling_3m_avg_rating,
@@ -526,8 +582,9 @@ def page_overview(categories, date_range, min_reviews):
   st.divider()
 
   # ---- BQ1: brands ------------------------------------------------------
-  st.subheader("BQ1 — Which brands earn the highest ratings, and which "
-               "underperform?")
+  section("BQ1 — Which brands earn the highest ratings, and which underperform?",
+          "The gap between best and worst is over a full star — far larger than "
+          "any other effect on this dashboard.")
 
   brands = q("""
     SELECT brand_name, review_count, avg_rating, recommend_pct, avg_price_usd
@@ -564,8 +621,12 @@ def page_overview(categories, date_range, min_reviews):
       "single 5-star review — which is why the control exists."
     )
 
+  st.divider()
+
   # ---- BQ1b: categories -------------------------------------------------
-  st.subheader("BQ1b — Which categories rate best?")
+  section("BQ1b — Which categories rate best?",
+          "Cleansers lead, sunscreen trails, and the whole spread is under two "
+          "tenths of a star — category matters far less than brand.")
 
   cats = q("""
     SELECT secondary_category,
@@ -599,11 +660,18 @@ def page_overview(categories, date_range, min_reviews):
 # --------------------------------------------------------------------------
 
 def page_analysis(categories, date_range, min_reviews):
-  st.title("Deep dive — price, hype and skin profile")
+  page_header(
+    "Deep dive — price, hype and skin profile",
+    "Four questions where the intuitive answer turns out to be wrong. Every "
+    "slider on this page is a SQL parameter, not a filter applied after the "
+    "fact — moving one sends a new query to Postgres.",
+  )
 
   # ---- BQ2: hype vs reality --------------------------------------------
-  st.subheader("BQ2 — Hype vs reality: which products are loved more than "
-               "they deserve?")
+  section("BQ2 — Hype vs reality: which products are loved more than they "
+          "deserve?",
+          "Wanting a product and liking it are different signals, and the "
+          "products where they diverge most are the well-marketed ones.")
 
   # Slider bounds come from the view itself, so even the range of the control
   # traces back to the data rather than to a guessed constant. Deliberately NOT
@@ -687,7 +755,9 @@ def page_analysis(categories, date_range, min_reviews):
   st.divider()
 
   # ---- BQ3: price vs rating --------------------------------------------
-  st.subheader("BQ3 — Does price predict satisfaction?")
+  section("BQ3 — Does price predict satisfaction?",
+          "Not linearly. Ratings peak at $50-100 and fall back above it — but "
+          "expensive products are rated far more consistently.")
 
   bands = q("""
     SELECT price_band, band_order, review_count, product_count,
@@ -771,8 +841,9 @@ def page_analysis(categories, date_range, min_reviews):
   st.divider()
 
   # ---- BQ4: skin profile ------------------------------------------------
-  st.subheader("BQ4 — Do reviewers with different skin profiles rate "
-               "differently?")
+  section("BQ4 — Do reviewers with different skin profiles rate differently?",
+          "Slightly, and the honest answer is that the difference is too small "
+          "to act on — which is worth saying out loud.")
 
   # Replaces a hardcoded HAVING >= 1000. The floor was always a judgement call;
   # making it a parameter lets the audience watch the judgement being made -
@@ -853,7 +924,9 @@ def page_analysis(categories, date_range, min_reviews):
   st.divider()
 
   # ---- review length ----------------------------------------------------
-  st.subheader("Does review length say anything about the rating?")
+  section("Does review length say anything about the rating?",
+          "Not about the average — but short reviews are markedly more "
+          "polarised than long ones.")
 
   length = q("""
     SELECT length_bucket, bucket_order, review_count, avg_review_length,
