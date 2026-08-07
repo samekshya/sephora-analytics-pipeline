@@ -598,6 +598,84 @@ def page_analysis(categories, date_range, min_reviews):
     "which is what the floor is there to prevent."
   )
 
+  st.divider()
+
+  # ---- review length ----------------------------------------------------
+  st.subheader("Does review length say anything about the rating?")
+
+  length = q("""
+    SELECT length_bucket, bucket_order, review_count, avg_review_length,
+           avg_rating, recommend_pct, rating_stddev,
+           pct_1_star, pct_5_star, pct_extreme
+    FROM dw.vw_rating_by_review_length
+    ORDER BY bucket_order
+  """)
+
+  # The Unknown bucket (no recorded length) is kept in the view so it reconciles
+  # to the fact table, but it is not a LENGTH, so plotting it on an ordered
+  # length axis would be a category error. It stays visible in the table below.
+  plotted = length[length["length_bucket"] != "Unknown"]
+
+  left, right = st.columns(2)
+  with left:
+    fig = px.bar(plotted, x="length_bucket", y="avg_rating",
+                 color="avg_rating", color_continuous_scale=SEQ,
+                 title="Average rating by review length",
+                 labels={"length_bucket": "", "avg_rating": "Avg rating"})
+    # Truncated for the same reason as the price and skin charts: the spread is
+    # ~0.06 of a star. Stated in the caption rather than left to be noticed.
+    fig.update_yaxes(range=[plotted["avg_rating"].min() - 0.02,
+                            plotted["avg_rating"].max() + 0.02])
+    fig.update_layout(coloraxis_showscale=False)
+    st.plotly_chart(fig, use_container_width=True)
+
+  with right:
+    melted = plotted.melt(
+      id_vars="length_bucket", value_vars=["pct_1_star", "pct_5_star"],
+      var_name="share", value_name="pct")
+    fig = px.bar(melted, x="length_bucket", y="pct", color="share",
+                 barmode="group",
+                 title="Share of 1-star and 5-star reviews by length",
+                 labels={"length_bucket": "", "pct": "% of reviews",
+                         "share": ""})
+    st.plotly_chart(fig, use_container_width=True)
+
+  # Read off the view rather than written into the prose. The incremental load
+  # moves these by a hundredth of a point, and a caption that quotes a number
+  # the chart beside it no longer shows is worse than no caption.
+  shortest, longest = plotted.iloc[0], plotted.iloc[-1]
+  spread = float(plotted["avg_rating"].max() - plotted["avg_rating"].min())
+
+  st.caption(
+    "The common assumption is that unhappy customers write longer reviews. "
+    "**This data does not support it.** Average rating is essentially flat "
+    "across every length bucket — the left chart has a truncated y-axis and the "
+    f"whole spread is still only {spread:.3f} of a star, less than the price "
+    "effect. The right chart is where the signal is: going from the shortest "
+    "bucket to the longest, the share of 1-star reviews falls "
+    f"({shortest['pct_1_star']:.1f}% → {longest['pct_1_star']:.1f}%) **and** so "
+    f"does the share of 5-star reviews ({shortest['pct_5_star']:.1f}% → "
+    f"{longest['pct_5_star']:.1f}%). Short reviews are polarised; long reviews "
+    "are moderate. The two extremes shrink together, which is precisely why the "
+    "mean barely moves. Rating standard deviation falls across the same buckets "
+    f"({shortest['rating_stddev']:.4f} → {longest['rating_stddev']:.4f}) — the "
+    "same fact, stated a second way."
+  )
+
+  with st.expander("The numbers behind those two charts"):
+    st.dataframe(
+      length[["length_bucket", "review_count", "avg_review_length",
+              "avg_rating", "recommend_pct", "rating_stddev",
+              "pct_1_star", "pct_5_star", "pct_extreme"]],
+      hide_index=True, use_container_width=True)
+    st.caption(
+      f"All {int(length['review_count'].sum()):,} rows, including the "
+      f"{int(length.loc[length['length_bucket'] == 'Unknown', 'review_count'].iloc[0]):,} "
+      "with no recorded length — kept so `vw_rating_by_review_length` sums back "
+      "to `fact_reviews` exactly in `sql/validation/dashboard_checks.sql`, and "
+      "excluded from the charts above because 'Unknown' is not a length."
+    )
+
 
 # --------------------------------------------------------------------------
 # Router
