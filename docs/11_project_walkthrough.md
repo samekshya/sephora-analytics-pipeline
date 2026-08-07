@@ -6,6 +6,22 @@ can read it top to bottom and understand not just *what* was built but *why*,
 at every step. `CLAUDE.md` is the terse running checkpoint; this is the long
 version.
 
+> **Written 2026-08-07, before the phase-9 remediation.** The narrative of how
+> the pipeline was built is still accurate — that is genuinely how it happened.
+> Several specifics changed the next day. What they were, and where the current
+> account lives:
+>
+> | Then | Now |
+> |---|---|
+> | Two load modes; `--full-reload` stopped at 2023 | Three named modes: `full` / `historical` / `incremental` — [05](05_etl_and_incremental_loading.md), D17 |
+> | 15 DAG tasks | **16** — a failure watcher was added — [06](06_airflow_runbook.md), D20 |
+> | Unmatched rows dropped with a log warning | Counted against a named reason; unexplained gaps raise — D19 |
+> | Quality checks all fatal | `hard_failure` / `warning` severities — D21 |
+> | 8 hand-rolled fault-injection cases | **45 pytest tests** — [08](08_testing_evidence.md) |
+> | Power BI planned, not built | **Streamlit, built** — [`dashboard/`](../dashboard/README.md), D18 |
+> | 6 analytics views | **9**, split from validation SQL — D22 |
+> | `dim_reviewer_profile` described as 2,003 rows | **1,896** — 2,003 is the pre-cleaning figure |
+
 ---
 
 ## 0. What we started with
@@ -35,7 +51,7 @@ project so the format matched what the course taught.
 
 Before writing a single cleaning rule, we ran 14 profiling checks against the
 raw files and wrote up everything found in
-`docs/problem statement and data sources.md`. This stage existed to answer one
+`docs/02_data_quality_findings.md`. This stage existed to answer one
 question honestly: **what is actually wrong with this data**, rather than
 guessing.
 
@@ -366,7 +382,7 @@ profile per person and **mis-tag roughly one review in seven** — with no
 constraint violation, nothing downstream ever noticing. And it would corrupt
 exactly the one business question (#4) those attributes exist to answer.
 
-**`dim_reviewer_profile`** (2,003 rows, of 4,200 theoretically possible
+**`dim_reviewer_profile`** (1,896 rows loaded; 2,003 of 4,200 theoretically possible
 combinations) — this is where those four attributes actually live: a **junk
 dimension**, one row per distinct combination of skin_tone/skin_type/eye_color/hair_color,
 at the grain they were genuinely recorded — per review. The alternative
@@ -374,7 +390,7 @@ at the grain they were genuinely recorded — per review. The alternative
 1.09M-row fact table for no analytic benefit; carrying them as raw text
 columns on the fact itself would mean repeating those strings 1.09M times.
 Bundling low-cardinality correlated attributes into one junk dimension is the
-standard Kimball answer, and 2,003 rows costs almost nothing to join against.
+standard Kimball answer, and 1,896 rows costs almost nothing to join against.
 No `NULL` members — missing answers were already mapped to `'Unknown'` at the
 staging boundary, and `'Unknown'` is treated as a real, meaningful answer
 ("reviewer chose not to say"), not a placeholder to be filtered out.
@@ -518,9 +534,9 @@ Shape of the DAG:
   or they'd sit in the staging tables forever and corrupt the next run.
 
 **Runs, both verified green:**
-- **Full reload**: all 15 tasks green, 1,043,868 fact rows loaded (after the
+- **Full reload**: all tasks green, 1,043,868 fact rows loaded (after the
   chunking fix above).
-- **Incremental**: all 15 tasks green in **22 seconds**, 49,503 new rows
+- **Incremental**: all tasks green in **22 seconds**, 49,503 new rows
   bringing the total to 1,093,371.
 - Staging cleanup left all 6 staging tables at 0 rows after both runs.
 
