@@ -102,7 +102,7 @@ def q(sql: str, params: tuple = None) -> pd.DataFrame:
 
 
 @st.cache_data(ttl=300)
-def q_oltp(sql: str) -> pd.DataFrame:
+def q_oltp(sql: str, params: tuple = None) -> pd.DataFrame:
   """Same as q(), against the OLTP database, but returns None instead of raising.
 
   The data quality panel is the only caller. A dashboard that goes blank
@@ -114,7 +114,7 @@ def q_oltp(sql: str) -> pd.DataFrame:
   except psycopg2.Error:
     return None
   try:
-    return pd.read_sql_query(sql, conn)
+    return pd.read_sql_query(sql, conn, params=params)
   except psycopg2.Error:
     return None
   finally:
@@ -185,12 +185,23 @@ def data_quality_panel():
     # ---- row accounting, source through warehouse ----------------------
     st.markdown("**Row accounting — every stage, queried now**")
 
-    fact_rows = int(q("SELECT count(*) AS n FROM dw.fact_reviews")["n"].iloc[0])
+    fact = q("""
+      SELECT count(*) AS n, max(submission_date) AS watermark
+      FROM dw.fact_reviews
+    """).iloc[0]
+    fact_rows = int(fact["n"])
+
+    # after_watermark is what separates "held back" from "lost". During the
+    # historical baseline the warehouse is deliberately ~49.5k rows behind
+    # staging (D8) — reporting that as a shortfall would be the panel lying at
+    # exactly the moment it is on screen during the demo.
     oltp = q_oltp("""
-      SELECT (SELECT count(*) FROM raw.reviews)      AS raw_reviews,
-             (SELECT count(*) FROM "3nf".review)     AS nf3_review,
-             (SELECT count(*) FROM staging.review)   AS staging_review
-    """)
+      SELECT (SELECT count(*) FROM raw.reviews)    AS raw_reviews,
+             (SELECT count(*) FROM "3nf".review)   AS nf3_review,
+             (SELECT count(*) FROM staging.review) AS staging_review,
+             (SELECT count(*) FROM staging.review
+               WHERE submission_date > %s)         AS after_watermark
+    """, (fact["watermark"],))
 
     if oltp is None:
       st.warning(
@@ -239,7 +250,10 @@ def data_quality_panel():
       LEFT JOIN dw.dim_date             d  ON d.date_key = f.date_key
     """).iloc[0]
 
-    gap = None if oltp is None else int(oltp.iloc[0]["staging_review"]) - fact_rows
+    gap = held_back = None
+    if oltp is not None:
+      gap = int(oltp.iloc[0]["staging_review"]) - fact_rows
+      held_back = int(oltp.iloc[0]["after_watermark"])
 
     st.dataframe(
       pd.DataFrame([
@@ -258,23 +272,46 @@ def data_quality_panel():
       ]),
       hide_index=True, use_container_width=True)
 
+    preamble = ("These are the four named reasons `etl/transform.py` may drop "
+                "a fact row for. ")
+    d19 = ("Had `staging.review` and `dw.fact_reviews` disagreed by even one "
+           "row that no reason accounted for, `reconcile.py` would have raised "
+           "`ReconciliationError` and failed the run rather than loading a "
+           "warehouse that looks complete and isn't (D19).")
+
     if gap is None:
       st.caption(
-        "These are the four named reasons `etl/transform.py` may drop a fact "
-        "row for. The counts above re-run each check against the loaded "
-        "warehouse: a non-zero would mean a row reached the fact table without "
-        "a resolvable key."
+        preamble +
+        "The counts above re-run each check against the loaded warehouse: a "
+        "non-zero would mean a row reached the fact table without a resolvable "
+        "key. " + d19
+      )
+    elif gap == 0:
+      st.caption(
+        preamble +
+        f"The total is not inferred from them — it is measured: "
+        f"`staging.review` minus `dw.fact_reviews` is **{gap:,}**, so nothing "
+        f"was dropped for any reason, named or otherwise. " + d19
+      )
+    elif gap == held_back:
+      # The historical-baseline state. Not loss, and the panel says which.
+      st.caption(
+        preamble +
+        f"The warehouse is currently **{gap:,} rows behind** `staging.review` "
+        f"— and all {held_back:,} of them are dated after the watermark "
+        f"({fact['watermark']}). They were **not dropped**: this is a "
+        f"`historical` load, which deliberately holds later reviews back so an "
+        f"incremental run has real data to pick up (D8). Run the DAG in "
+        f"`incremental` mode and this gap closes to zero. " + d19
       )
     else:
-      st.caption(
-        f"These are the four named reasons `etl/transform.py` may drop a fact "
-        f"row for. The total is not inferred from them — it is measured: "
-        f"`staging.review` minus `dw.fact_reviews` is **{gap:,}**, so nothing "
-        f"was dropped for any reason, named or otherwise. Had the two "
-        f"disagreed by even one row without a reason accounting for it, "
-        f"`reconcile.py` would have raised `ReconciliationError` and the run "
-        f"would have failed rather than loading a warehouse that looks "
-        f"complete and isn't (D19)."
+      unexplained = gap - held_back
+      st.error(
+        f"`staging.review` is **{gap:,} rows** ahead of `dw.fact_reviews`, but "
+        f"only {held_back:,} of those are after the watermark. "
+        f"**{unexplained:,} rows are unaccounted for.** That is the condition "
+        f"`reconcile.py` exists to prevent — treat this warehouse as incomplete "
+        f"until it is explained."
       )
 
     # ---- kept, not dropped ----------------------------------------------

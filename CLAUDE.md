@@ -85,7 +85,7 @@ sephora_oltp ── raw schema       1:1 CSV mirror, loaded by ingest.py (COPY)
    │            3nf schema       9 normalized tables, FKs enforced
    │            staging schema   trimmed, analytics-ready subset
    ▼  etl/ package: extract → transform → reconcile → quality gate → load
-sephora_dw     dw schema — 5 dimensions + fact_reviews + 9 analytics views
+sephora_dw     dw schema — 5 dimensions + fact_reviews + 10 analytics views
    ▼
 Streamlit dashboard (2 pages, live connection)
 ```
@@ -143,10 +143,10 @@ Indexes on all four fact FK columns. **No `brand_key` on the fact table** (D11).
 | 4. DW star schema migrations | **Done** — 7 migrations, 5 dims + fact_reviews |
 | 5. ETL package + `pipeline.py` | **Done** — three named load modes (D17), row reconciliation (D19), severity-aware quality gate (D21) |
 | 6. Airflow staged DAG | **Done** — 16 tasks incl. the failure watcher (D20); historical and incremental runs both green |
-| 7. Analytics views | **Done** — 9 views (one uses window functions), split from validation SQL (D22) |
-| 8. Streamlit dashboard | **Done** — 2 pages, live connection, smoke-tested against the warehouse (D18) |
-| 9. Tests | **Done** — 45 pytest passing + 11 DAG assertions verified in-container |
-| 10. Documentation | **Done** — `docs/01`–`11` + index; 22 decisions logged |
+| 7. Analytics views | **Done** — 10 views (one uses window functions), split from validation SQL (D22) |
+| 8. Streamlit dashboard | **Done** — 2 pages, live connection, 3 slider-driven query params, live status strip and data-quality panel (D18, D23) |
+| 9. Tests | **Done** — 51 pytest passing + 11 DAG assertions verified in-container |
+| 10. Documentation | **Done** — `docs/01`–`11` + index; 23 decisions logged |
 | 11. Reproducibility | **Done** — `setup.ps1`, 11 resumable steps; `.env.example` with working defaults |
 | — Presentation deck | **Not started** — material ready, see `docs/README.md` |
 | — Screenshots | **Not captured** — filenames listed in `docs/screenshots/README.md` |
@@ -217,11 +217,12 @@ Fill in from actual runs. Never estimate here — if it isn't measured, leave it
 | **Airflow, historical** | All tasks green; 1,043,868 fact rows. `load_fact_from_staging` SIGKILLed on the first attempt and succeeded after chunking (D15) |
 | **Airflow, incremental** | All tasks green in **22 seconds**; 49,503 rows → 1,093,371 total |
 | **Staging cleanup** | All 6 staging tables at 0 rows after both runs (`trigger_rule="all_done"`) |
-| **Analytics views** | **9** views created; all 8 full-population views reconcile to 1,093,371 exactly |
+| **Analytics views** | **10** views created; all 8 full-population views reconcile to 1,093,371 exactly (`vw_rating_by_skin_type` and `vw_hype_vs_reality` are deliberate subsets) |
 | **DAG structure** | 16 tasks; 11/11 assertions pass in-container (watcher is the only leaf, watches all 15 others) |
-| **Test suite** | **45 passed**, 1 skipped locally (airflow not in the host venv) |
+| **Test suite** | **51 passed**, 1 skipped locally (airflow not in the host venv) |
 | **Migration idempotency** | All 22 migrations re-applied against a fully-loaded database with no error |
-| **Dashboard** | Both pages render via `AppTest`; KPI row equals `SELECT count(*), avg(rating) FROM dw.fact_reviews` |
+| **Dashboard** | Both pages render via `AppTest`; KPI row equals `SELECT count(*), avg(rating) FROM dw.fact_reviews`. Each of the 3 Deep-dive sliders asserted live individually (hype gap 1,660 → 484 products, price 1,660 → 935, skin tones 12 → 14 at floor 0) |
+| **Live-refresh demo, verified end to end** | `DELETE FROM dw.fact_reviews WHERE submission_date >= '2023-01-01'` → exactly 1,043,868 / watermark 2022-12-31; incremental restores 49,503 with 0 already present. `--mode historical` does **not** reset a full warehouse (no truncate anywhere, all loads `ON CONFLICT DO NOTHING`) |
 
 ### Headline analytics results (for the presentation)
 
@@ -235,6 +236,7 @@ Fill in from actual runs. Never estimate here — if it isn't measured, leave it
 | **BQ2 — hype vs reality** | Most overhyped: The Ordinary Vitamin C 23% — 132,601 loves, **3.4456** rating. The INKEY List Oat Cleansing Balm 127,819 loves / 3.6044. Sleeper hits: MACRENE actives products, ~200 loves and **4.93** ratings |
 | BQ2 — trend | Volume grew 2,760 (2008) → 215,278 (2020), then eased. Rating dipped to **4.2075 in 2020** and recovered to 4.3384 by 2022 |
 | BQ4 — skin type | Combination 4.3092 → dry 4.2911 → normal 4.2822 → **oily 4.2708**. Real but small spread (0.038) — worth stating as a weak signal, not a headline |
+| **Review length — the assumed finding is false** | "Unhappy customers write more" does **not** hold here. Avg rating is flat across every length bucket (4.2784 → 4.3342, spread **0.056**), and 1★ reviews are the *shortest* (median 230 chars vs 283 for 3★/4★). The real signal is polarisation: as length rises, the 1★ share falls **8.15% → 3.73%** *and* the 5★ share falls **67.35% → 61.07%**, so both tails shrink together and cancel in the mean. `rating_stddev` falls monotonically 1.2555 → 1.0589 |
 
 ---
 
@@ -305,6 +307,14 @@ Full reasoning lives in `docs/09_decision_log.md`. Summary:
   ones you would stop production for.
 - **D22** `sql/analytics/views/` (DDL, changes the database) is separate from
   `sql/validation/` (read-only assertions, changes nothing). Opposite jobs.
+- **D23** Dashboard controls are **query parameters, not dataframe filters**, and
+  the data-quality panel **recomputes rather than reads a stored summary**. Each
+  slider binds into the SQL (`WHERE hype_gap >= %s`, `BETWEEN %s AND %s`,
+  `HAVING sum(review_count) >= %s`); a client-side filter would look identical on
+  screen and be a different claim. The panel distinguishes **held back** from
+  **lost**: at the historical baseline the warehouse is legitimately 49,503 rows
+  behind staging, and a panel that called that a shortfall would be lying at
+  exactly the moment it is on screen during the demo.
 
 ### Deliberate deviations from the reference project
 

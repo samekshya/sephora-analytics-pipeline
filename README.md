@@ -99,7 +99,7 @@ reads. The warehouse then denormalizes deliberately — that contrast is the poi
 | Star schema warehouse | Built, loaded, verified |
 | ETL package + `pipeline.py` | Complete — three modes, reconciliation, idempotency all verified |
 | Airflow staged DAG | Complete — 16 tasks, failure watcher, both modes green |
-| Analytics views | Complete — 9 views, all reconciling to `fact_reviews` |
+| Analytics views | Complete — 10 views, all full-population views reconciling to `fact_reviews` |
 | Streamlit dashboard | Complete — 2 pages, live, smoke-tested against the warehouse |
 | Tests | 45 passing + 11 DAG assertions verified in-container |
 | Documentation | Complete — [`docs/`](docs/README.md), 11 numbered documents |
