@@ -91,6 +91,48 @@ def kpi_row():
 
 
 # --------------------------------------------------------------------------
+# Live warehouse status
+# --------------------------------------------------------------------------
+
+def live_status_strip(k):
+  """Show the warehouse watermark and row count, with a delta across refreshes.
+
+  Reads the SAME vw_kpi_summary row the KPI metrics above it use — deliberately
+  not a second `SELECT max(submission_date) FROM dw.fact_reviews`, which would be
+  a query path that could disagree with the view under caching.
+
+  The delta is the point of the demo: load `historical` mode, trigger the
+  incremental DAG, click Refresh, and the count visibly jumps. The baseline is
+  frozen by the Refresh button (see sidebar_filters), NOT updated on every
+  render — otherwise moving any slider would silently reset the comparison and
+  the jump would never be visible.
+  """
+  current = int(k["total_reviews"])
+  baseline = st.session_state.get("reviews_baseline")
+
+  # Recorded for the Refresh button to pick up on the NEXT rerun. Session state
+  # survives reruns, so at click time this still holds what was last displayed.
+  st.session_state["reviews_current"] = current
+
+  delta = None
+  if baseline is not None and current != baseline:
+    delta = f"{current - baseline:+,} since last refresh"
+
+  with st.container(border=True):
+    c1, c2, c3 = st.columns([1, 1, 2])
+    c1.metric("Warehouse watermark", str(k["latest_review"]))
+    c2.metric("Rows in fact_reviews", f"{current:,}", delta=delta)
+    with c3:
+      st.markdown("**Live connection — not an export**")
+      st.caption(
+        "Run the Airflow DAG in incremental mode, then click **Refresh data** "
+        "in the sidebar — this number moves live. The watermark is "
+        "`max(submission_date)`, which is also what the pipeline reads to decide "
+        "where the next incremental load starts."
+      )
+
+
+# --------------------------------------------------------------------------
 # Sidebar — the interactive filters
 # --------------------------------------------------------------------------
 
@@ -139,6 +181,10 @@ def sidebar_filters():
 
   st.sidebar.divider()
   if st.sidebar.button("Refresh data", use_container_width=True):
+    # Freeze whatever is currently on screen as the comparison point BEFORE
+    # clearing the cache, so the status strip can show how far the warehouse
+    # moved while the DAG was running.
+    st.session_state["reviews_baseline"] = st.session_state.get("reviews_current")
     st.cache_data.clear()
     st.rerun()
 
@@ -173,6 +219,8 @@ def page_overview(categories, date_range, min_reviews):
     f"Helpfulness averaged only over the {k['reviews_with_feedback']:,} reviews "
     f"that actually received a vote — it is undefined, not zero, elsewhere (D5)."
   )
+
+  live_status_strip(k)
 
   st.divider()
 
