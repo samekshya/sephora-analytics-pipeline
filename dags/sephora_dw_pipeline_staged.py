@@ -195,9 +195,10 @@ def sephora_dw_pipeline_staged():
         extract_task = extract_dim_to_staging()
         load_task = load_dim_from_staging()
         create_staging_tables >> extract_task >> load_task
-        return load_task
+        return extract_task, load_task
 
-    dim_load_tasks = {cfg["key"]: make_dim_staging_tasks(cfg) for cfg in DIM_CONFIGS}
+    dim_task_pairs = {cfg["key"]: make_dim_staging_tasks(cfg) for cfg in DIM_CONFIGS}
+    dim_load_tasks = {key: pair[1] for key, pair in dim_task_pairs.items()}
 
     # --- dim_product: its own pair, because it depends on dim_brand ---
 
@@ -329,6 +330,13 @@ def sephora_dw_pipeline_staged():
                                       'total_neg_feedback_count'],
                 unique_columns=['source_row_id', 'product_id'],
                 rating_column='rating',
+                # Warning-severity, never fatal. Both measures are legitimately
+                # null in bulk (is_recommended unanswered ~15%; helpfulness
+                # undefined wherever nobody voted — D5). The thresholds are set
+                # above the observed rates, so they stay quiet on normal data
+                # and speak up only if the source shifts.
+                null_rate_checks=[('is_recommended', 30.0),
+                                  ('helpfulness', 80.0)],
             )
         except DataQualityError as e:
             # Bad data will not pass on retry - fail fast instead of burning the
@@ -378,6 +386,45 @@ def sephora_dw_pipeline_staged():
         finally:
             dst_conn.close()
 
+    @task(trigger_rule="one_failed", retries=0)
+    def watch_for_failure():
+        """Marks the DAG RUN failed if ANY upstream task failed.
+
+        Why this task has to exist
+        --------------------------
+        Airflow decides a DAG run's final state from its LEAF tasks. Before this
+        task, the only leaf was cleanup_staging, which runs with
+        trigger_rule='all_done' precisely so it cleans up after a failure. The
+        combination is a trap: extract fails -> cleanup still runs -> cleanup
+        succeeds -> the only leaf is green -> THE DAG RUN REPORTS SUCCESS even
+        though the warehouse got no data. A green run that loaded nothing is
+        worse than a red one, because nobody goes looking.
+
+        How the fix works
+        -----------------
+        Every task in the DAG is wired upstream of this one, and it carries
+        trigger_rule='one_failed', which fires as soon as at least one direct
+        upstream task has failed:
+
+          - Something failed  -> the rule is satisfied -> this task RUNS and
+                                 raises -> it is a leaf, and a failed leaf makes
+                                 the whole DAG run FAILED.
+          - Nothing failed    -> the rule is never satisfied -> this task is
+                                 SKIPPED. A skipped leaf does not fail a run, so
+                                 a clean run stays green.
+
+        retries=0 because retrying a task whose entire job is to report that
+        something already failed would just delay the red status by 10 minutes.
+
+        This is the watcher pattern from the Airflow docs, which exists for
+        exactly this all_done-cleanup situation.
+        """
+        raise AirflowFailException(
+            "Upstream task failure detected — failing the DAG run. "
+            "Check the Graph view for the red task; cleanup_staging will have "
+            "run regardless, so no staging rows are left behind."
+        )
+
     # --- wiring ---
 
     extract_product = extract_product_to_staging()
@@ -400,7 +447,20 @@ def sephora_dw_pipeline_staged():
     [load_product, dim_load_tasks["customer"],
      dim_load_tasks["reviewer_profile"], date_task] >> transform_fact
 
-    transform_fact >> quality_fact >> load_fact_task >> cleanup_staging()
+    cleanup = cleanup_staging()
+    transform_fact >> quality_fact >> load_fact_task >> cleanup
+
+    # The watcher must see EVERY task, because trigger_rule evaluates a task's
+    # DIRECT upstreams only. A task missing from this list is a task whose
+    # failure the watcher cannot notice, so the list is built from the task
+    # objects themselves rather than typed out by hand.
+    all_tasks = [create_staging_tables, extract_product, load_product,
+                 date_task, extract_fact, transform_fact, quality_fact,
+                 load_fact_task, cleanup]
+    for extract_task, load_task in dim_task_pairs.values():
+        all_tasks.extend([extract_task, load_task])
+
+    all_tasks >> watch_for_failure()
 
 
 sephora_dw_pipeline_staged()
