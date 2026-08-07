@@ -3,7 +3,7 @@
 ![Python](https://img.shields.io/badge/Python-3.13-3776AB?logo=python&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)
 ![Apache Airflow](https://img.shields.io/badge/Apache%20Airflow-3.3.0-017CEE?logo=apacheairflow&logoColor=white)
-![Power BI](https://img.shields.io/badge/Power%20BI-Dashboard-F2C811?logo=powerbi&logoColor=black)
+![Streamlit](https://img.shields.io/badge/Streamlit-Dashboard-FF4B4B?logo=streamlit&logoColor=white)
 
 ## Overview
 
@@ -15,16 +15,17 @@ files by hand every time.
 
 This project builds an analytics-ready warehouse from the
 [Sephora Products and Skincare Reviews](https://www.kaggle.com/datasets/nadyinky/sephora-products-and-skincare-reviews)
-dataset using PostgreSQL, Python, Apache Airflow and Power BI.
+dataset using PostgreSQL, Python, Apache Airflow and Streamlit.
 
 ## Business questions
 
 The warehouse is structured to answer:
 
 1. Which brands and skincare categories earn the highest ratings, and which underperform?
-2. How do review volume and average rating trend over time?
+2. **Hype vs reality** — which products have high `loves_count` but low ratings?
 3. Does price predict satisfaction — do expensive products actually rate better?
-4. Do reviewers with different skin types rate the same skincare products differently?
+4. Do reviewers with different skin types and tones rate the same products differently?
+5. How do review volume and average rating trend over time?
 
 > **Scope note.** The catalogue covers 8,494 products across 9 categories, but only
 > **Skincare** products carry reviews — 2,351 of them, holding all 1,093,371 reviews. The
@@ -39,7 +40,7 @@ The warehouse is structured to answer:
 - **PostgreSQL 16** — two databases: `sephora_oltp` (`raw` + `3nf` + `staging`) and
   `sephora_dw` (star schema)
 - **Apache Airflow 3.3.0** — staged DAG, watermark-driven incremental loads
-- **Power BI** — dashboard answering the four business questions
+- **Streamlit + Plotly** — 2-page dashboard, live connection, answering the five business questions (D18)
 - **SQL** — append-only numbered migrations
 
 ## Architecture
@@ -62,6 +63,7 @@ flowchart LR
     subgraph ETL["etl/ package"]
         EX["extract.py"]
         TR["transform.py"]
+        RC["reconcile.py"]
         QA["quality.py"]
         LD["load.py"]
     end
@@ -69,13 +71,13 @@ flowchart LR
     subgraph DW["sephora_dw — star schema"]
         DIMS[("5 dimensions")]
         FACT[("fact_reviews")]
-        VIEWS[("6 analytics views")]
+        VIEWS[("9 analytics views")]
     end
 
-    BI["Power BI"]
+    BI["Streamlit dashboard"]
 
     CSV --> EXP --> CLN --> RAW --> NF --> STG
-    STG --> EX --> TR --> QA --> LD
+    STG --> EX --> TR --> RC --> QA --> LD
     LD --> DIMS
     LD --> FACT
     DIMS --> VIEWS
@@ -95,10 +97,12 @@ reads. The warehouse then denormalizes deliberately — that contrast is the poi
 | Cleaning (`clean.py`) | Complete, verified |
 | OLTP `raw` + `3nf` + `staging` | Built, loaded, reconciled |
 | Star schema warehouse | Built, loaded, verified |
-| ETL package + `pipeline.py` | Complete — full / incremental / idempotent all verified |
-| Airflow staged DAG | Built, verified |
-| Analytics views | Complete — 6 views |
-| Power BI dashboard | See "Dashboard" below |
+| ETL package + `pipeline.py` | Complete — three modes, reconciliation, idempotency all verified |
+| Airflow staged DAG | Complete — 16 tasks, failure watcher, both modes green |
+| Analytics views | Complete — 9 views, all reconciling to `fact_reviews` |
+| Streamlit dashboard | Complete — 2 pages, live, smoke-tested against the warehouse |
+| Tests | 45 passing + 11 DAG assertions verified in-container |
+| Documentation | Complete — [`docs/`](docs/README.md), 11 numbered documents |
 
 ## The data
 
@@ -116,7 +120,7 @@ dataset description.
 | Rating distribution | 5★ 698,951 · 4★ 199,389 · 3★ 81,816 · 2★ 53,032 · 1★ 61,223 |
 
 Full profiling, verified relationships and quality findings:
-[`docs/problem statement and data sources.md`](docs/problem%20statement%20and%20data%20sources.md).
+[`docs/02_data_quality_findings.md`](docs/02_data_quality_findings.md).
 
 ## The data model
 
@@ -256,48 +260,92 @@ row-level data crosses task boundaries via XCom — XCom is metadata storage, no
 
 ## Run it
 
-Requires Docker and Python 3.13.
+Requires Docker and Python 3.13. Place the Kaggle CSVs in `data/raw/` first —
+see [`data/README.md`](data/README.md).
 
-```bash
-# 1. deps
-python -m venv .venv
-.venv/Scripts/activate            # or source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env              # fill in credentials
+### The one-command path (Windows)
 
-# 2. start Postgres (host port 5434; both databases are created on first boot)
-docker compose up -d
-
-# 3. explore and clean
-python explore.py                 # uncomment the checks you want in main()
-python clean.py                   # -> data/processed/
-
-# 4. build and load the OLTP database
-psql -h localhost -p 5434 -U postgres -d sephora_oltp -f sql/oltp/01_raw_schema.sql
-python ingest.py                  # COPY into raw
-for f in sql/oltp/migrations/*.sql; do
-  psql -h localhost -p 5434 -U postgres -d sephora_oltp -f "$f"
-done
-
-# 5. build the warehouse
-for f in sql/datawarehouse/migrations/*.sql; do
-  psql -h localhost -p 5434 -U postgres -d sephora_dw -f "$f"
-done
-
-# 6. run the pipeline
-python pipeline.py --full-reload  # everything before 2023-01-01
-python pipeline.py                # incremental - everything after the watermark
-
-# 7. or run it via Airflow instead
-docker compose -f docker-compose.yml -f docker-compose-airflow.yml up -d
-# open localhost:8081 (airflow/airflow), trigger sephora_dw_pipeline_staged
-# with full_reload=true first
-
-# 8. analytics views
-for f in sql/analytics/*.sql; do
-  psql -h localhost -p 5434 -U postgres -d sephora_dw -f "$f"
-done
+```powershell
+.\setup.ps1
 ```
+
+Runs prerequisites → Postgres → schemas → clean → ingest → 3NF/staging
+migrations → warehouse migrations → views → pytest → Airflow. Every step is
+idempotent, so re-running is the intended way to recover from a failure. Resume
+a single step with `.\setup.ps1 -Step 6`.
+
+Then trigger the DAG twice at <http://localhost:8081> (`historical`, then
+`incremental`), and:
+
+```powershell
+.\setup.ps1 -Step 11                        # validate every total
+py -m streamlit run dashboard/app.py        # dashboard on :8501
+```
+
+### Manually
+
+```powershell
+py -m pip install -r requirements.txt -r requirements-dev.txt
+Copy-Item .env.example .env                 # working local defaults already in it
+
+docker compose up -d                        # Postgres on 5434, both databases
+
+py explore.py                               # uncomment the checks you want
+py clean.py                                 # -> data/processed/
+
+# OLTP: raw schema, ingest, then the numbered migrations in order
+py ingest.py
+# (setup.ps1 -Step 3, -Step 6 apply the SQL; or psql each file yourself)
+
+# Warehouse: star schema, then the views
+# (setup.ps1 -Step 7)
+
+# Load — three explicit modes
+py pipeline.py --mode full                  # every review, no date bound
+py pipeline.py --mode historical            # before 2023-01-01 (demo baseline)
+py pipeline.py --mode incremental           # after the watermark (default)
+
+# Or via Airflow
+docker compose -f docker-compose-airflow.yml up -d
+# localhost:8081 -> sephora_dw_pipeline_staged -> Trigger -> pick load_mode
+```
+
+## Dashboard
+
+```powershell
+py -m streamlit run dashboard/app.py     # http://localhost:8501
+```
+
+Two pages, **live** Postgres connection — not a static export. Run the DAG in
+`incremental` mode, click **Refresh data**, and the review count moves on screen.
+
+Reads the curated views rather than raw fact/dim joins, so the dashboard and
+`sql/validation/dashboard_checks.sql` share one definition of every number. **If the two
+disagree, the dashboard is wrong.**
+
+Charts state their own caveats rather than hoping nobody asks: the price and skin-profile
+y-axes are truncated (the whole spread is about a tenth of a star, and a zero-based axis
+renders five identical bars), the incomplete final month is annotated `partial month`, and the
+brand chart says how many of the 304 brands clear the current review floor.
+
+See [`dashboard/README.md`](dashboard/README.md) for what each visual shows and
+[`docs/07_dashboard_insights.md`](docs/07_dashboard_insights.md) for the findings.
+
+### The headline finding
+
+Price does **not** predict satisfaction linearly. It is an inverted U:
+
+| Price band | Avg rating | Std dev |
+|---|---|---|
+| Under $15 | 4.2383 | 1.2211 |
+| $15–30 | 4.2756 | 1.1861 |
+| $30–50 | 4.3055 | 1.1498 |
+| **$50–100** | **4.3335** ← peak | 1.0996 |
+| $100+ | 4.2708 ← falls back | 1.1366 |
+
+The mean is the weaker half of it. The **standard deviation falls steadily** as price rises —
+expensive products aren't mainly rated *higher*, they're rated far more **consistently**.
+Above $100 satisfaction drops back to roughly what a $15 product achieves.
 
 ## Verified
 
@@ -312,29 +360,53 @@ reviews, and all six integrity checks return 0: no orphan reviews by product or 
 product missing a brand or category, no NULL attribute reaching staging, no duplicate natural
 key.
 
-**Warehouse loads** — all four run modes:
+**Warehouse loads**:
 
 | Run | Result |
 |---|---|
-| Full load | **1,043,868** fact rows inserted |
-| Idempotency, real case (re-run full) | 1,043,868 offered, **0 inserted** |
+| Historical load (`--mode historical`) | **1,043,868** fact rows inserted |
+| Idempotency, real case (re-run) | 1,043,868 offered, **0 inserted** |
 | Incremental | watermark 2022-12-31 → **49,503** inserted |
 | Idempotency, empty case (re-run incremental) | watermark 2023-03-21 → **0 extracted**, 0 inserted |
 
 **Final warehouse** — `fact_reviews` 1,093,371 rows, matching `staging.review` exactly.
-Dimensions: 304 brands · 8,494 products · 503,216 customers · 1,896 reviewer profiles ·
+Dimensions: 304 brands · 8,494 products · 503,216 customers · **1,896** reviewer profiles ·
 5,379 dates.
 
-**Quality gate** — 8 fault-injection cases in `tests/test_quality.py`, each breaking exactly
-one thing (null surrogate key, negative count, out-of-range rating, duplicate business key,
-several at once) plus the two that must *not* raise. 8 passed, 0 failed. Proving the gate
-rejects bad data matters more than proving it accepts good data — every pipeline run already
-demonstrates the latter.
+**Tests** — **45 passing**, plus 11 DAG structural assertions verified inside the Airflow
+container. Fault injection is the core of it: the suite proves the quality gate *rejects* bad
+data, which matters more than proving it accepts good data — every pipeline run already
+demonstrates the latter. See [`docs/08_testing_evidence.md`](docs/08_testing_evidence.md) for
+what each test proves.
+
+**Row accounting** — every dropped row is counted against a named reason
+(`unresolved_product`, `unresolved_customer`, `unresolved_reviewer_profile`,
+`out_of_range_date`), and an unexplained gap raises `ReconciliationError` rather than shipping
+a short table.
+
+**Dashboard totals** — all 8 full-population views reconcile to exactly 1,093,371, verified by
+`sql/validation/dashboard_checks.sql`.
 
 ## Design decisions
 
-Full reasoning for all fourteen in [`docs/09_decision_log.md`](docs/09_decision_log.md).
+Full reasoning for all **22** in [`docs/09_decision_log.md`](docs/09_decision_log.md).
 The ones worth knowing:
+
+**Reviewer attributes belong to the review, not the reviewer.** 22,503 authors (4.47%) gave
+more than one distinct answer for skin type / tone / eye / hair, across 149,788 reviews
+(13.69%). A `dim_customer` keyed on the author and holding those four columns would force one
+profile per person and mis-tag roughly one review in seven — silently, with no constraint
+violation. They live on a junk dimension, `dim_reviewer_profile` (1,896 rows), at the grain
+they were actually recorded. **D2**, and the single most important decision here.
+
+**A failed DAG run now reports failure.** `cleanup_staging` uses `trigger_rule="all_done"` so
+it cleans up after a failure — which made it the only leaf task, and Airflow derives run state
+from leaves. A failed extract therefore produced a *green* run over an empty warehouse.
+`watch_for_failure` (`one_failed`, the only leaf) fixes it. **D20**.
+
+**Three load modes, because `--full-reload` wasn't one.** It stopped at 2023-01-01 — a
+historical baseline whose name claimed otherwise, and there was no way to load everything in
+one command. Now `full` / `historical` / `incremental`. **D17**.
 
 **The category hierarchy isn't one.** One `secondary_category` appears under as many as 7
 different primaries (`Value & Gift Sets`), so category is keyed on the full
@@ -376,33 +448,44 @@ Cut deliberately, not overlooked:
 
 ```
 CLAUDE.md                        goals, per-stage status, measured numbers
+setup.ps1                        one-sequence setup, 11 resumable steps
 explore.py                       14 profiling checks, toggled in main()
 clean.py                         raw CSVs -> data/processed/
 ingest.py                        processed CSVs -> raw schema via COPY
-pipeline.py                      local runner: --full-reload / incremental
+pipeline.py                      local runner: --mode full|historical|incremental
 docker-compose.yml               project Postgres (host port 5434)
 docker-compose-airflow.yml       Airflow 3.3.0, LocalExecutor (port 8081)
 dags/
-  sephora_dw_pipeline_staged.py  staged DAG
+  sephora_dw_pipeline_staged.py  staged DAG, 16 tasks
 etl/
-  extract.py                     staging -> DataFrames, full + incremental
-  transform.py                   key resolution, derived columns, drop-unmatched
-  quality.py                     pre-load quality gate
-  load.py                        upserts with ON CONFLICT DO NOTHING
-  staging.py                     staging-table helpers for the DAG
+  extract.py                     staging -> DataFrames, three load modes
+  transform.py                   key resolution, derived columns, counted drops
+  reconcile.py                   row-count identities; raises on unexplained loss
+  quality.py                     pre-load gate, hard_failure / warning severity
+  load.py                        inserts with ON CONFLICT DO NOTHING
+  staging.py                     per-run staging-table helpers for the DAG
+dashboard/
+  app.py                         Streamlit, 2 pages, live connection
+  README.md                      what each visual shows
+  data_model.md                  which tables and views it reads
 sql/
   init/                          database creation on first container boot
   oltp/01_raw_schema.sql
   oltp/migrations/               3nf DDL -> staging DDL -> loads -> reconciliation
   datawarehouse/migrations/      01..07, star schema DDL, append-only
-  analytics/                     6 dashboard-backing views + cross-checks
+  analytics/views/               9 dashboard-backing views (one uses window functions)
+  validation/                    read-only checks; changes nothing
 tests/
-  test_quality.py                fault injection for the quality gate
+  unit/                          quality gate + transform, no database needed
+  integration/                   live-database reconciliation + dashboard smoke
+  test_dag_structure.py          DAG wiring (skips without airflow)
+  verify_dag_in_container.py     the same assertions, plain python, in-container
 docs/
-  problem statement and data sources.md
-  09_decision_log.md
-  project_plan.pdf
-  screenshots/
+  README.md                      documentation index
+  01..11                         problem statement -> walkthrough
+  archive/                       superseded docs, kept
+  screenshots/                   presentation captures
+data/README.md                   where to get the CSVs and where to put them
 logs/                            per-run logs, timestamped
 ```
 
