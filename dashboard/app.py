@@ -17,6 +17,7 @@ Run:
     py -m streamlit run dashboard/app.py
 """
 
+import math
 import os
 
 import pandas as pd
@@ -352,16 +353,37 @@ def page_analysis(categories, date_range, min_reviews):
   st.subheader("BQ2 — Hype vs reality: which products are loved more than "
                "they deserve?")
 
+  # Slider bounds come from the view itself, so even the range of the control
+  # traces back to the data rather than to a guessed constant. Deliberately NOT
+  # narrowed by the category filter: a slider whose end-points jump every time
+  # you tick a category is impossible to reason about mid-demo.
+  gap_bounds = q("""
+    SELECT min(hype_gap) AS lo, max(hype_gap) AS hi, count(*) AS products
+    FROM dw.vw_hype_vs_reality
+  """).iloc[0]
+  gap_lo = int(math.floor(float(gap_bounds["lo"]) * 100))
+  gap_hi = int(math.ceil(float(gap_bounds["hi"]) * 100))
+
+  min_gap = st.slider(
+    "Minimum hype gap (percentile points)",
+    min_value=gap_lo, max_value=gap_hi, value=gap_lo, step=1,
+    help="hype_gap is loves-percentile minus rating-percentile. 0 means a "
+         "product is loved exactly as much as its rating justifies; +40 means "
+         "it sits 40 percentile points higher on loves than on rating. Starts "
+         "at the minimum so the scatter opens on the full catalogue.",
+  )
+
   hype = q("""
     SELECT product_name, brand_name, secondary_category, price_usd,
            loves_count, review_count, avg_rating, hype_gap
     FROM dw.vw_hype_vs_reality
     WHERE secondary_category = ANY(%s)
+      AND hype_gap >= %s
     ORDER BY hype_gap DESC
-  """, (categories,))
+  """, (categories, min_gap / 100.0))
 
   if hype.empty:
-    st.info("No products match the selected categories.")
+    st.info("No products clear that hype gap in the selected categories.")
   else:
     fig = px.scatter(
       hype, x="loves_count", y="avg_rating",
@@ -378,8 +400,24 @@ def page_analysis(categories, date_range, min_reviews):
       "`loves_count` is recorded BEFORE purchase (a wishlist add); rating is "
       "recorded after. Red = far more loved than its rating justifies. Both "
       "signals are percentile-ranked in SQL so a cheap moisturizer and a $300 "
-      "serum are comparable. Minimum 50 reviews per product."
+      "serum are comparable. Minimum 50 reviews per product. "
+      f"**{len(hype):,} of {int(gap_bounds['products']):,}** products clear the "
+      f"current hype-gap threshold ({min_gap:+d} points) — drag the slider "
+      "right and the cloud thins to the worst offenders."
     )
+
+    # The sleeper-hit tail is queried separately and NOT filtered by the
+    # slider. It is the opposite end of the same distribution, so a
+    # "minimum hype gap" would empty it the moment the slider left its floor,
+    # which reads as a bug rather than as a filter doing its job.
+    sleepers = q("""
+      SELECT product_name, brand_name, loves_count, review_count,
+             avg_rating, hype_gap
+      FROM dw.vw_hype_vs_reality
+      WHERE secondary_category = ANY(%s)
+      ORDER BY hype_gap ASC
+      LIMIT 10
+    """, (categories,))
 
     left, right = st.columns(2)
     with left:
@@ -388,12 +426,11 @@ def page_analysis(categories, date_range, min_reviews):
         hype.head(10)[["product_name", "brand_name", "loves_count",
                        "review_count", "avg_rating", "hype_gap"]],
         hide_index=True, use_container_width=True)
+      st.caption("Filtered by the hype-gap slider above.")
     with right:
       st.markdown("**Sleeper hits** — better than their love count suggests")
-      st.dataframe(
-        hype.tail(10).iloc[::-1][["product_name", "brand_name", "loves_count",
-                                  "review_count", "avg_rating", "hype_gap"]],
-        hide_index=True, use_container_width=True)
+      st.dataframe(sleepers, hide_index=True, use_container_width=True)
+      st.caption("The opposite tail — not affected by the slider.")
 
   st.divider()
 
@@ -435,14 +472,33 @@ def page_analysis(categories, date_range, min_reviews):
   )
 
   # ---- product-level scatter -------------------------------------------
+  price_bounds = q("""
+    SELECT min(price_usd) AS lo, max(price_usd) AS hi
+    FROM dw.vw_hype_vs_reality
+  """).iloc[0]
+  price_lo = int(math.floor(float(price_bounds["lo"])))
+  price_hi = int(math.ceil(float(price_bounds["hi"])))
+
+  price_range = st.slider(
+    "Price range (USD) — filters the product scatter below",
+    min_value=price_lo, max_value=price_hi,
+    value=(price_lo, price_hi), step=1, format="$%d",
+    help="Bounds the scatter only. The banded chart above is left whole on "
+         "purpose: it comes from vw_rating_by_price_band, whose bands are the "
+         "thing being compared.",
+  )
+
   scatter = q("""
     SELECT price_usd, avg_rating, review_count, product_name, brand_name,
            secondary_category
     FROM dw.vw_hype_vs_reality
     WHERE secondary_category = ANY(%s)
-  """, (categories,))
+      AND price_usd BETWEEN %s AND %s
+  """, (categories, price_range[0], price_range[1]))
 
-  if not scatter.empty:
+  if scatter.empty:
+    st.info("No products in that price range for the selected categories.")
+  else:
     fig = px.scatter(
       scatter, x="price_usd", y="avg_rating", size="review_count",
       color="secondary_category", hover_data=["product_name", "brand_name"],
@@ -454,7 +510,10 @@ def page_analysis(categories, date_range, min_reviews):
     st.caption(
       "The banded view above aggregates this cloud. At product level the "
       "relationship is weak — price explains very little of the variation in "
-      "satisfaction, which is itself the answer to BQ3."
+      "satisfaction, which is itself the answer to BQ3. "
+      f"Showing {len(scatter):,} products between ${price_range[0]} and "
+      f"${price_range[1]}; the OLS trend line is refitted to whatever the "
+      "slider selects, so narrowing the range genuinely changes the slope."
     )
 
   st.divider()
@@ -462,6 +521,17 @@ def page_analysis(categories, date_range, min_reviews):
   # ---- BQ4: skin profile ------------------------------------------------
   st.subheader("BQ4 — Do reviewers with different skin profiles rate "
                "differently?")
+
+  # Replaces a hardcoded HAVING >= 1000. The floor was always a judgement call;
+  # making it a parameter lets the audience watch the judgement being made -
+  # drop it to 0 and 'ebony' appears with 3 reviews and a wild average.
+  min_group_reviews = st.slider(
+    "Minimum reviews per skin group",
+    min_value=0, max_value=25000, value=1000, step=500,
+    help="Applied as HAVING sum(review_count) >= this, in SQL, to both charts. "
+         "A group of 3 reviews produces an average that swings a full star on "
+         "one more review — visible noise, not a finding.",
+  )
 
   left, right = st.columns(2)
 
@@ -473,13 +543,17 @@ def page_analysis(categories, date_range, min_reviews):
       FROM dw.vw_rating_by_skin_type
       WHERE secondary_category = ANY(%s)
       GROUP BY skin_type
+      HAVING sum(review_count) >= %s
       ORDER BY avg_rating DESC
-    """, (categories,))
+    """, (categories, int(min_group_reviews)))
 
-    if not skin_type.empty:
+    if skin_type.empty:
+      st.info(f"No skin type has {min_group_reviews:,} reviews. Lower the floor.")
+    else:
       fig = px.bar(skin_type, x="skin_type", y="avg_rating",
                    color="avg_rating", color_continuous_scale=SEQ,
-                   title="Average rating by skin type",
+                   title=f"Average rating by skin type "
+                         f"(min {min_group_reviews:,} reviews)",
                    labels={"skin_type": "", "avg_rating": "Avg rating"})
       fig.update_yaxes(range=[skin_type["avg_rating"].min() - 0.05,
                               skin_type["avg_rating"].max() + 0.05])
@@ -494,14 +568,17 @@ def page_analysis(categories, date_range, min_reviews):
       FROM dw.vw_rating_by_skin_tone
       WHERE secondary_category = ANY(%s)
       GROUP BY skin_tone
-      HAVING sum(review_count) >= 1000
+      HAVING sum(review_count) >= %s
       ORDER BY avg_rating DESC
-    """, (categories,))
+    """, (categories, int(min_group_reviews)))
 
-    if not skin_tone.empty:
+    if skin_tone.empty:
+      st.info(f"No skin tone has {min_group_reviews:,} reviews. Lower the floor.")
+    else:
       fig = px.bar(skin_tone, x="skin_tone", y="avg_rating",
                    color="avg_rating", color_continuous_scale=SEQ,
-                   title="Average rating by skin tone (min 1,000 reviews)",
+                   title=f"Average rating by skin tone "
+                         f"(min {min_group_reviews:,} reviews)",
                    labels={"skin_tone": "", "avg_rating": "Avg rating"})
       fig.update_yaxes(range=[skin_tone["avg_rating"].min() - 0.05,
                               skin_tone["avg_rating"].max() + 0.05])
@@ -514,7 +591,11 @@ def page_analysis(categories, date_range, min_reviews):
     "mis-tagged 13.69% of reviews — this exact chart would have been quietly "
     "wrong (D2). 'Unknown' is kept rather than filtered: it means the reviewer "
     "declined to say, which is a real answer. Note the truncated axes — the "
-    "spread is real but small (~0.04), a weak signal, not a headline."
+    "spread is real but small (~0.04), a weak signal, not a headline. "
+    f"At the current floor, {len(skin_type)} skin type(s) and "
+    f"{len(skin_tone)} skin tone(s) qualify; pull the floor to 0 and the two "
+    "smallest tone groups reappear with a handful of reviews between them, "
+    "which is what the floor is there to prevent."
   )
 
 
