@@ -8,8 +8,7 @@ Dimension extracts have no time axis and always pull in full (D10) — a review
 arriving in an incremental batch for a newly-catalogued product must find its
 product key already present, or transform.py drops it silently.
 
-Fact extracts come in a _full variant (bounded by the demo cutoff) and an
-_incremental variant (everything after the watermark).
+Fact extracts come in three variants, one per load mode (see LOAD_MODES).
 """
 
 import logging
@@ -19,9 +18,27 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
-# The full/incremental boundary (D8). Reviews before this date are the initial
-# load; everything from it onward is held back as the incremental batch.
-INCREMENTAL_CUTOFF = '2023-01-01'
+# The three load modes (D17). The names are the whole point of the distinction:
+#
+#   full         EVERY review in staging, no date bound at all. What you run to
+#                build or rebuild the warehouse for real.
+#   historical   Reviews before HISTORICAL_CUTOFF only. A DEMO BASELINE, not a
+#                full load - it deliberately holds the 2023 rows back so the
+#                incremental run afterwards has something real to pick up.
+#   incremental  Only reviews after the warehouse's own watermark.
+#
+# This replaces a two-mode design whose "full-reload" actually stopped at 2023.
+# That name claimed something the code did not do: anyone reading it would
+# reasonably believe the warehouse held everything, when a quarter of a year was
+# missing by design. A mode that silently withholds data must say so in its name.
+FULL = 'full'
+HISTORICAL = 'historical'
+INCREMENTAL = 'incremental'
+LOAD_MODES = (FULL, HISTORICAL, INCREMENTAL)
+
+# The historical/incremental boundary (D8). Reviews before this date form the
+# demo baseline; everything from it onward is the held-back incremental batch.
+HISTORICAL_CUTOFF = '2023-01-01'
 
 # Falls back to this on an empty fact table so the first incremental run behaves
 # as a full load without special-casing. Comfortably before the earliest review
@@ -83,7 +100,10 @@ def extract_customers(conn):
 
 
 def extract_reviewer_profiles(conn):
-  """Distinct four-attribute combinations — 2,003 rows for the junk dimension.
+  """Distinct four-attribute combinations — 1,896 rows for the junk dimension.
+
+  1,896, not the 2,003 combinations present in the RAW data: cleaning collapses
+  'notSureST' to 'Unknown' and 'Grey' to 'gray' before this runs.
 
   DISTINCT in SQL rather than drop_duplicates in pandas: the database can do it
   against an index without shipping 1.09M rows over the wire first.
@@ -147,17 +167,57 @@ def extract_reviews(conn, start_date, end_date):
 
 
 def extract_reviews_full(conn):
-  """The initial load — everything before the incremental cutoff (1,043,868 rows)."""
-  return extract_reviews(conn, '2000-01-01', INCREMENTAL_CUTOFF)
+  """FULL mode — every review in staging, no date bound (1,093,371 rows).
+
+  No WHERE clause at all. Idempotency is what makes this safe to run against an
+  already-populated warehouse: ON CONFLICT (source_row_id, product_id) DO
+  NOTHING means re-offering rows that are already there inserts 0.
+  """
+  sql = REVIEW_COLUMNS_SQL + " ORDER BY submission_date;"
+  return extract(conn, sql)
+
+
+def extract_reviews_historical(conn):
+  """HISTORICAL mode — the demo baseline, everything before the 2023 cutoff
+  (1,043,868 rows), leaving 49,503 rows for incremental to pick up."""
+  return extract_reviews(conn, '2000-01-01', HISTORICAL_CUTOFF)
 
 
 def extract_reviews_incremental(oltp_conn, watermark):
-  """Everything after the watermark — the held-back 2023 batch on first run."""
+  """INCREMENTAL mode — everything after the watermark.
+
+  Strictly greater than, not >=, because the watermark is a date the warehouse
+  has already loaded in full. Using >= would re-offer every row from that day
+  on every single run; ON CONFLICT would absorb them, but the run would report
+  thousands of rows extracted and zero loaded, forever.
+  """
   sql = REVIEW_COLUMNS_SQL + """
     WHERE submission_date > %(watermark)s
     ORDER BY submission_date;
   """
   return extract(oltp_conn, sql, {"watermark": watermark})
+
+
+def extract_reviews_for_mode(oltp_conn, mode, watermark=None):
+  """Dispatch to the right extract for `mode`.
+
+  One place where a mode string becomes a query, so pipeline.py and the DAG
+  cannot drift into disagreeing about what a mode means.
+  """
+  if mode not in LOAD_MODES:
+    raise ValueError(f"Unknown load mode {mode!r} — expected one of {LOAD_MODES}")
+
+  if mode == FULL:
+    logger.info("FULL mode — extracting every review, no date bound")
+    return extract_reviews_full(oltp_conn)
+
+  if mode == HISTORICAL:
+    logger.info(f"HISTORICAL mode — extracting reviews before {HISTORICAL_CUTOFF} "
+                f"(demo baseline; later rows held back for incremental)")
+    return extract_reviews_historical(oltp_conn)
+
+  logger.info(f"INCREMENTAL mode — extracting reviews after watermark {watermark}")
+  return extract_reviews_incremental(oltp_conn, watermark)
 
 
 def get_watermark(conn):

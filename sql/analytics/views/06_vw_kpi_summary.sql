@@ -1,5 +1,5 @@
 -- The KPI row on dashboard page 1. One row, computed in SQL rather than as
--- Power BI measures, so the headline numbers cannot disagree with the detail
+-- dashboard-side measures, so the headline numbers cannot disagree with the detail
 -- visuals beneath them.
 --
 -- products_reviewed vs products_in_catalogue is stated deliberately: only 2,351

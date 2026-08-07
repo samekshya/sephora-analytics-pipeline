@@ -5,3 +5,10 @@ python-dateutil==2.9.0.post0
 python-dotenv==1.2.2
 six==1.17.0
 tzdata==2026.3
+
+# --- Dashboard ---
+# Pinned to the versions actually installed and verified on this machine,
+# not to whatever was current when the file was written.
+streamlit==1.61.1
+plotly==6.9.0
+statsmodels==0.14.6   # required by plotly's trendline="ols"

@@ -43,15 +43,18 @@ range, FK indexes and CHECK constraints are kept; its `dim_customer` design is c
 
 ## 2. Locked business questions
 
-The dashboard and analytics queries answer exactly these four. Do not add or drop without
+The dashboard and analytics queries answer exactly these five. Do not add or drop without
 recording a decision-log entry.
 
-1. Which brands and categories earn the highest ratings, and which underperform?
-2. How do review volume and average rating trend over time?
-3. Does price predict satisfaction — do expensive products actually rate better?
-4. Do reviewers with different skin types rate the same skincare products differently?
+1. **BQ1** — Which brands and categories earn the highest ratings, and which underperform?
+2. **BQ2** — Hype vs reality: which products have high `loves_count` but low ratings?
+3. **BQ3** — Does price predict satisfaction — do expensive products actually rate better?
+4. **BQ4** — Do reviewers with different skin types and tones rate the same products differently?
+5. **BQ5** — How do review volume and average rating trend over time?
 
-> A fifth question — "which product attributes (Vegan, Clean at Sephora…) correlate with
+> BQ2 was added during the phase-9 remediation and is backed by `vw_hype_vs_reality`.
+>
+> A further question — "which product attributes (Vegan, Clean at Sephora…) correlate with
 > rating?" — was evaluated against the data and deliberately dropped. See **D3**.
 
 ---
@@ -66,7 +69,7 @@ recording a decision-log entry.
   > separate Sephora project at `D:\Data Projects\sephora-analytics-de-project`). This project
   > uses its own container on 5434 — never point it at 5432 or 5433.
 - **Apache Airflow 3.3.0** — Docker Compose, LocalExecutor, staged DAG, watermark incremental
-- **Power BI Desktop** — 2-page dashboard, live Postgres connection
+- **Streamlit + Plotly** — 2-page dashboard, live Postgres connection (D18; replaced Power BI)
 - **SQL** — append-only numbered migrations
 
 ---
@@ -81,11 +84,14 @@ data/raw/*.csv
 sephora_oltp ── raw schema       1:1 CSV mirror, loaded by ingest.py (COPY)
    │            3nf schema       9 normalized tables, FKs enforced
    │            staging schema   trimmed, analytics-ready subset
-   ▼  etl/ package: extract → transform → quality gate → load
-sephora_dw     dw schema — 5 dimensions + fact_reviews
+   ▼  etl/ package: extract → transform → reconcile → quality gate → load
+sephora_dw     dw schema — 5 dimensions + fact_reviews + 9 analytics views
    ▼
-Power BI (2 pages)
+Streamlit dashboard (2 pages, live connection)
 ```
+
+Orchestrated by `dags/sephora_dw_pipeline_staged.py` (16 tasks) or run locally with
+`pipeline.py --mode full|historical|incremental`.
 
 Grain of `fact_reviews`: **one row per review.**
 
@@ -119,7 +125,7 @@ Grain of `fact_reviews`: **one row per review.**
 | `dim_brand` | `brand_key` serial | `brand_id` UNIQUE |
 | `dim_product` | `product_key` serial | `product_id` UNIQUE; FK → dim_brand; 3 category columns flattened; price_usd, price_band, size, loves_count, flags |
 | `dim_customer` | `customer_key` serial | `customer_id` UNIQUE — **shopper identity only** (D2) |
-| `dim_reviewer_profile` | `reviewer_profile_key` serial | **Junk dimension**, ~2,003 rows; UNIQUE on (skin_tone, skin_type, eye_color, hair_color) |
+| `dim_reviewer_profile` | `reviewer_profile_key` serial | **Junk dimension**, **1,896 rows** (2,003 combinations exist in the raw data; cleaning collapses them); UNIQUE on (skin_tone, skin_type, eye_color, hair_color) |
 | `fact_reviews` | `review_key` serial | `UNIQUE(source_row_id, product_id)`; FKs to product / customer / reviewer_profile / date; measures: rating (CHECK 1–5), is_recommended, helpfulness, total_feedback_count, total_pos_feedback_count, total_neg_feedback_count, review_length; `submission_date` for the watermark |
 
 Indexes on all four fact FK columns. **No `brand_key` on the fact table** (D11).
@@ -131,14 +137,19 @@ Indexes on all four fact FK columns. **No `brand_key` on the fact table** (D11).
 | Stage | State |
 |---|---|
 | 0. Project plan + CLAUDE.md | Done |
-| 1. Explore (`explore.py`, problem statement doc) | **Done** — 14 checks, all run clean; findings in `docs/problem statement and data sources.md`, decisions D1–D13 in `docs/09_decision_log.md` |
+| 1. Explore (`explore.py`, problem statement doc) | **Done** — 14 checks, all run clean; findings in `docs/02_data_quality_findings.md`, decisions D1–D13 in `docs/09_decision_log.md` |
 | 2. Clean (`clean.py` → `data/processed/`) | **Done** — run end-to-end in 24s; `data/processed/products.csv` (8.1 MB) and `reviews.csv` (546.7 MB) |
 | 3. OLTP raw + 3NF + staging, `ingest.py` | **Done** — 15 migrations applied, reconciliation clean, 0 row gap end to end |
 | 4. DW star schema migrations | **Done** — 7 migrations, 5 dims + fact_reviews |
-| 5. ETL package + `pipeline.py` | **Done** — all 4 run modes verified; 8/8 quality fault-injection tests pass |
-| 6. Airflow staged DAG | **Done** — full and incremental runs both green, all 15 tasks |
-| 7. Analytics views | **Done** — 6 views + cross-check script. **Power BI dashboard still to build** (needs the desktop app) |
-| 8. README / decision log / checklist | **Done** — 16 decisions logged |
+| 5. ETL package + `pipeline.py` | **Done** — three named load modes (D17), row reconciliation (D19), severity-aware quality gate (D21) |
+| 6. Airflow staged DAG | **Done** — 16 tasks incl. the failure watcher (D20); historical and incremental runs both green |
+| 7. Analytics views | **Done** — 9 views (one uses window functions), split from validation SQL (D22) |
+| 8. Streamlit dashboard | **Done** — 2 pages, live connection, smoke-tested against the warehouse (D18) |
+| 9. Tests | **Done** — 45 pytest passing + 11 DAG assertions verified in-container |
+| 10. Documentation | **Done** — `docs/01`–`11` + index; 22 decisions logged |
+| 11. Reproducibility | **Done** — `setup.ps1`, 11 resumable steps; `.env.example` with working defaults |
+| — Presentation deck | **Not started** — material ready, see `docs/README.md` |
+| — Screenshots | **Not captured** — filenames listed in `docs/screenshots/README.md` |
 
 ---
 
@@ -167,7 +178,7 @@ Fill in from actual runs. Never estimate here — if it isn't measured, leave it
 | Rating distribution | 5★ 698,951 · 4★ 199,389 · 3★ 81,816 · 2★ 53,032 · 1★ 61,223 |
 | Authors whose reviewer profile is **not** constant | 22,503 (4.47%) |
 | Reviews written by those authors | 149,788 (13.69%) |
-| Distinct reviewer-profile combinations | 2,003 (of 4,200 possible) |
+| Distinct reviewer-profile combinations | 2,003 raw (of 4,200 possible) → **1,896 after cleaning**, which is `dim_reviewer_profile`'s row count |
 | Reviews before the 2023-01-01 cutoff (full load, pre-dedup) | 1,044,880 |
 | `review_text` total volume | 350 MB (min 8, median 263, mean 321, max 6,448 chars) |
 | Rows where `helpfulness IS NULL` ⟺ `total_feedback_count = 0` disagree | 0 |
@@ -197,16 +208,20 @@ Fill in from actual runs. Never estimate here — if it isn't measured, leave it
 | **3NF row counts** | brand 304 · category 174 · product 8,494 · author 503,216 · review 1,093,371 · skin_tone 13 · skin_type 4 · eye_color 5 · hair_color 7 |
 | **Staging row counts** | product 8,494 · review 1,093,371 (date range 2008-08-28 → 2023-03-21) |
 | raw → 3nf → staging reconciliation | _pending_ |
-| **Full load** (`pipeline.py --full-reload`) | 1,043,868 fact rows inserted; dims 304 / 8,494 / 503,216 / 1,896 / 5,379. Fact load 62s |
+| **Historical load** (`pipeline.py --mode historical`) | 1,043,868 fact rows inserted; dims 304 / 8,494 / 503,216 / 1,896 / 5,379. Fact load 62s |
 | **Idempotency, real case** (re-run full) | 1,043,868 offered, **0 inserted** everywhere |
 | **Incremental load** (`pipeline.py`) | watermark 2022-12-31 → 49,503 extracted, **49,503 inserted** |
 | **Idempotency, empty case** (re-run incremental) | watermark 2023-03-21 → **0 extracted**, gate skipped, 0 inserted |
 | **Final warehouse** | **fact_reviews 1,093,371** — matches `staging.review` exactly. Date range 2008-08-28 → 2023-03-21, avg rating 4.2990 |
 | **Quality fault injection** (`tests/test_quality.py`) | 8 passed, 0 failed |
-| **Airflow, full reload** | All 15 tasks green; 1,043,868 fact rows. `load_fact_from_staging` SIGKILLed on the first attempt and succeeded after chunking (D15) |
-| **Airflow, incremental** | All 15 tasks green in **22 seconds**; 49,503 rows → 1,093,371 total |
+| **Airflow, historical** | All tasks green; 1,043,868 fact rows. `load_fact_from_staging` SIGKILLed on the first attempt and succeeded after chunking (D15) |
+| **Airflow, incremental** | All tasks green in **22 seconds**; 49,503 rows → 1,093,371 total |
 | **Staging cleanup** | All 6 staging tables at 0 rows after both runs (`trigger_rule="all_done"`) |
-| **Analytics views** | 6 views created and cross-checked against the fact table |
+| **Analytics views** | **9** views created; all 8 full-population views reconcile to 1,093,371 exactly |
+| **DAG structure** | 16 tasks; 11/11 assertions pass in-container (watcher is the only leaf, watches all 15 others) |
+| **Test suite** | **45 passed**, 1 skipped locally (airflow not in the host venv) |
+| **Migration idempotency** | All 22 migrations re-applied against a fully-loaded database with no error |
+| **Dashboard** | Both pages render via `AppTest`; KPI row equals `SELECT count(*), avg(rating) FROM dw.fact_reviews` |
 
 ### Headline analytics results (for the presentation)
 
@@ -216,7 +231,8 @@ Fill in from actual runs. Never estimate here — if it isn't measured, leave it
 | **BQ3 — price vs satisfaction is an inverted U** | Under $15 **4.2383** → $15-30 4.2756 → $30-50 4.3055 → **$50-100 4.3335 (peak)** → $100+ **4.2708 (falls back)**. Rating variance also falls steadily as price rises (stddev 1.2211 → 1.0996) |
 | BQ1a — best brands (≥500 reviews) | MARA 4.8608 · DAMDAM 4.7394 · Dr. Lara Devgan 4.7164 |
 | BQ1a — worst brands (≥500 reviews) | Topicals 3.6590 · DERMAFLASH 3.7856 · Isle of Paradise 3.8601 |
-| BQ1b — categories (secondary, see D16) | Moisturizers 297,201 · Treatments 221,871 · Cleansers 200,477 · Eye Care 74,966 · Masks 70,483 · Sunscreen 41,126. Best-rated Cleansers 4.3443, worst Sunscreen 4.1665 |
+| BQ1b — categories (secondary, see D16) | By volume: Moisturizers 297,201 (4.3172) · Treatments 221,871 (4.3040) · Cleansers 200,477 (**4.3443, best**) · Mini Size 85,433 (4.2856) · Eye Care 74,966 (**4.1784**) · Masks 70,483 (4.3410) · Lip Balms 61,321 (4.3327) · Sunscreen 41,126 (**4.1665, worst**) |
+| **BQ2 — hype vs reality** | Most overhyped: The Ordinary Vitamin C 23% — 132,601 loves, **3.4456** rating. The INKEY List Oat Cleansing Balm 127,819 loves / 3.6044. Sleeper hits: MACRENE actives products, ~200 loves and **4.93** ratings |
 | BQ2 — trend | Volume grew 2,760 (2008) → 215,278 (2020), then eased. Rating dipped to **4.2075 in 2020** and recovered to 4.3384 by 2022 |
 | BQ4 — skin type | Combination 4.3092 → dry 4.2911 → normal 4.2822 → **oily 4.2708**. Real but small spread (0.038) — worth stating as a weak signal, not a headline |
 
@@ -233,14 +249,14 @@ Full reasoning lives in `docs/09_decision_log.md`. Summary:
   **review**, not the author. Measured: 22,503 authors (4.47%) give more than one distinct
   value, affecting 149,788 reviews (13.69%). A `dim_customer` keyed `UNIQUE` on the author,
   holding those four attributes, would force one profile per author and mis-tag ~1 in 7
-  reviews. Fixed with a **junk dimension**, `dim_reviewer_profile` (2,003 rows);
+  reviews. Fixed with a **junk dimension**, `dim_reviewer_profile` (**1,896 rows**);
   `dim_customer` keeps identity only.
 - **D3** **`highlights` evaluated, then dropped.** The column holds a stringified list
   (112 distinct tags, 82.4% coverage of reviewed products, 89.6% of reviews) and is a genuine
   many-to-many, which in a 3NF database would require `highlight` + `product_highlight`
   tables and in the warehouse a `dim_highlight` + bridge. Explored and measured, then cut to
   keep scope proportionate to an 8-minute presentation and to avoid many-to-many filter
-  complexity in Power BI. Business question #5 was dropped with it. `explore.py` still
+  complexity in the dashboard. A sixth business question was dropped with it. `explore.py` still
   reports the tag distribution so the decision is visibly informed, not accidental.
   Storing the raw comma-list in a column was never an option — that breaks 1NF.
 - **D4** Dedup key is (author_id, product_id, submission_time) — 1,040 dupes — not
@@ -267,6 +283,28 @@ Full reasoning lives in `docs/09_decision_log.md`. Summary:
   traceability; column trims (`highlights`, `ingredients`, sparse pricing columns) happen once,
   explicitly, at the `raw → 3nf` boundary. Mixing row-cleaning and column-dropping in one step
   makes it impossible to tell later which was a scope decision and which was a cleaning rule.
+- **D15** `load_fact_from_staging` reads in 100,000-row chunks over a server-side cursor. The
+  first full run was SIGKILLed: materialising 1,043,868 rows and then building a list of
+  tuples from them meant two full copies resident at once.
+- **D16** Category analysis runs at the **secondary** level. Every reviewed product is
+  `Skincare` at the primary level, so a primary-category chart is a single bar.
+- **D17** Three named load modes — `full` (no date bound), `historical` (before 2023-01-01,
+  the demo baseline), `incremental` (after the watermark). The old `--full-reload` stopped at
+  2023 while claiming to be full, and there was no way to load everything in one command.
+- **D18** **Streamlit instead of Power BI.** The dashboard lives in the repo: versioned,
+  diffable, testable, reproducible with one command. Cost stated honestly — DAX and the Power
+  BI model are not demonstrated by this project.
+- **D19** Every dropped row is counted against a named reason, zeros included, and an
+  unexplained gap raises `ReconciliationError`. Dropping rows is allowed; dropping them
+  without saying how many and why is not.
+- **D20** `watch_for_failure` (`one_failed`, the DAG's only leaf). `cleanup_staging` uses
+  `all_done` so failures still clean up — which made it the only leaf, and Airflow derives run
+  state from leaves, so a failed extract produced a **green** run over an empty warehouse.
+- **D21** Quality checks carry a severity. `hard_failure` halts before any write; `warning`
+  logs and continues. All-fatal sounds rigorous but means the only checks worth writing are
+  ones you would stop production for.
+- **D22** `sql/analytics/views/` (DDL, changes the database) is separate from
+  `sql/validation/` (read-only assertions, changes nothing). Opposite jobs.
 
 ### Deliberate deviations from the reference project
 
@@ -277,6 +315,9 @@ Full reasoning lives in `docs/09_decision_log.md`. Summary:
 | No bridge tables | The one genuine many-to-many in this dataset (`highlights`) was deliberately descoped — see D3 |
 | Junk dimension `dim_reviewer_profile` | The reference had no analog; four correlated low-cardinality attributes is the textbook case |
 | `dim_customer` carries no descriptive attributes | See D2 |
+| **Streamlit instead of Power BI** | The dashboard becomes part of the repo — versioned, diffable, testable in CI, reproducible with one command. The cost (no DAX, no Power BI model demonstrated) is stated in D18 rather than hidden |
+| **A DAG failure watcher** | The reference's DAG had no `all_done` cleanup task, so it never hit the bug where a failed run reports success (D20) |
+| **Enforced row reconciliation** | The reference dropped unmatched rows with a log line. Counting every drop against a named reason and raising on an unexplained gap is stricter than the pattern taught (D19) |
 
 ---
 

@@ -37,6 +37,12 @@ x-airflow-common: &airflow-common
     - ./etl:/opt/airflow/project/etl
     - ./logs/airflow:/opt/airflow/logs
     - ./config:/opt/airflow/config
+    # Mounted so tests/test_dag_structure.py can run where Airflow actually is.
+    # It skips locally (airflow isn't in the host venv), and a test that only
+    # ever skips proves nothing:
+    #   docker exec leapfrog_airflow_scheduler python -m pytest \
+    #     /opt/airflow/project/tests/test_dag_structure.py
+    - ./tests:/opt/airflow/project/tests
   user: "${AIRFLOW_UID:-50000}:0"
   depends_on:
     airflow_metadata:

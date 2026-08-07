@@ -37,6 +37,12 @@ reviewer attributes move into `dim_reviewer_profile`, a junk dimension holding o
 distinct `(skin_tone, skin_type, eye_color, hair_color)` combination — 2,003 rows. In the OLTP
 layer they sit on `3nf.review` as FKs to four small lookup tables.
 
+> **Correction (2026-08-08)**: the loaded dimension holds **1,896 rows, not 2,003**. 2,003 is
+> the number of distinct combinations in the *raw* data; cleaning collapses `'notSureST'` to
+> `'Unknown'` and `'Grey'` to `'gray'` before the dimension is built. The 2,003 figure was
+> measured correctly and then applied to the wrong thing. Left in place above rather than
+> silently edited — the entry is a record of what was decided and known at the time.
+
 **Why**: an earlier hand-written schema of mine (`reference/02_warehouse_schema.sql`) modelled
 these as attributes of `dim_customer`, keyed `UNIQUE (customer_id)`. Tested against the data
 before building on it:
@@ -63,8 +69,9 @@ the values simply differ between submissions. Putting the four columns directly 
 `fact_reviews` would work but means 1M rows carrying four repeated text values.
 
 A junk dimension is the standard Kimball treatment for exactly this: several low-cardinality,
-correlated attributes that don't justify separate dimensions. 2,003 rows of the 4,200
-theoretically possible combinations actually occur.
+correlated attributes that don't justify separate dimensions. 2,003 of the 4,200 theoretically
+possible combinations occur in the raw data — 1,896 once cleaning collapses the two known
+value defects, which is the loaded row count (see the correction above).
 
 ---
 
@@ -365,6 +372,170 @@ noticing that all 2,351 fall in one category.
 **Worth recording** because the pipeline was working perfectly and the number was still
 misleading. Every row count reconciled; the flaw was in what the data covers, which no
 integrity check can catch.
+
+---
+
+## D17. Three explicit load modes replace `--full-reload`
+
+**Date**: 2026-08-08
+
+**Decision**: `full` (every review, no date bound) · `historical` (before 2023-01-01) ·
+`incremental` (after the watermark). Wired identically through `pipeline.py --mode` and the
+DAG's `load_mode` Param.
+
+**Why**: the previous `--full-reload` flag loaded reviews **before 2023-01-01 only** — a
+historical baseline, not a full load. The name claimed something the code did not do. Anyone
+reading `--full-reload` would reasonably conclude the warehouse held everything, when a
+quarter of a year was missing by design, and no error or log line would correct them.
+
+A mode that deliberately withholds data has to say so in its name. Splitting the two apart
+also made a real gap visible: there was **no way to load everything in one command**. The demo
+baseline had quietly become the only "full" load available.
+
+`extract_reviews_for_mode()` is the single place a mode string becomes a query, so
+`pipeline.py` and the DAG cannot drift into disagreeing about what a mode means.
+
+**Ruled out**: keeping two modes and renaming `--full-reload` to `--historical`. That fixes
+the lie but leaves the missing capability.
+
+---
+
+## D18. Streamlit rather than Power BI
+
+**Date**: 2026-08-08
+
+**Decision**: the dashboard is `dashboard/app.py`, a Streamlit app in this repository,
+querying `sephora_dw` live.
+
+**Why**: the dashboard becomes **part of the project** rather than an artifact beside it.
+
+- **Versioned and diffable.** A `.pbix` is a binary; its logic can only be inspected by
+  opening it in the application. Every query here is plain text in git and reviewable in a
+  pull request like any other code.
+- **Reproducible by anyone.** Clone, `pip install -r requirements.txt`, one command. No
+  desktop install, no licence, no Windows requirement.
+- **Testable.** `tests/integration/test_dashboard_smoke.py` runs the app through Streamlit's
+  `AppTest` harness and asserts the KPI row equals `SELECT count(*), avg(rating) FROM
+  dw.fact_reviews`. A Power BI report cannot be asserted against its own source in CI.
+- **One definition of every number.** The app reads the same views as
+  `sql/validation/dashboard_checks.sql`, so the two cannot drift. Logic embedded in DAX would
+  be a second definition living somewhere unversioned.
+
+**Cost, stated honestly**: Power BI is what the course taught and what many employers use;
+DAX and the Power BI data model are not demonstrated by this project. The trade was made for
+reproducibility and testability, and it is the reason the checklist item "at least one DAX
+measure" is now marked not-applicable rather than pending.
+
+**Ruled out**: building both. Two dashboards means two places for a number to be wrong.
+
+---
+
+## D19. Every dropped row is counted against a named reason
+
+**Date**: 2026-08-08
+
+**Decision**: `etl/reconcile.py` enforces two identities, and raises `ReconciliationError`
+when either fails:
+
+```
+rows_extracted == rows_transformed + sum(rows_dropped_by_reason)
+rows_offered   == rows_inserted    + rows_already_present
+```
+
+`build_dim_product` and `build_fact_reviews` return `(DataFrame, drops)` where `drops` maps a
+reason — `unresolved_product`, `unresolved_customer`, `unresolved_reviewer_profile`,
+`out_of_range_date`, `unresolved_brand` — to a count, **including the zeros**.
+
+**Why**: `transform.py` previously dropped unresolved rows with `logger.warning` and nothing
+else. That is a silent data-loss channel with a paper trail nobody reads. If 1,000 reviews
+pointed at a product missing from `dim_product`, the run stayed green, the fact table was
+quietly 1,000 rows short, and the only evidence was one WARNING among thousands of log lines.
+
+Dropping rows is legitimate — a review whose product genuinely isn't in the catalogue cannot
+be loaded. Dropping them **without saying how many and why** is not. The identity turns an
+unnoticed shortfall into a stopped pipeline.
+
+Zeros are recorded deliberately: a reason key that appears only when it fires makes "nothing
+was dropped for this reason" indistinguishable from "this reason was never checked".
+
+---
+
+## D20. A failure watcher task, because `all_done` cleanup masked failures
+
+**Date**: 2026-08-08
+
+**Decision**: `watch_for_failure`, `trigger_rule="one_failed"`, `retries=0`, wired downstream
+of all 15 other tasks and the DAG's only leaf.
+
+**Why**: `cleanup_staging` uses `trigger_rule="all_done"` so a failed run still clears its
+staging rows. Correct in itself — but it made cleanup the only **leaf** task, and Airflow
+derives a DAG run's final state from its leaves. The result:
+
+> extract fails → cleanup still runs → cleanup succeeds → the only leaf is green →
+> **the DAG run reports SUCCESS** with an empty warehouse.
+
+A green run that loaded nothing is worse than a red one, because nobody investigates it. This
+is the Airflow documentation's own watcher pattern, and it exists for exactly this situation.
+
+- Something failed → `one_failed` is satisfied → the watcher runs, raises, and a failed leaf
+  fails the run.
+- Nothing failed → the rule is never satisfied → the watcher is **skipped**, and a skipped
+  leaf leaves the run green.
+
+`retries=0` because retrying a task whose only job is to report an existing failure would
+delay the red status by ten minutes.
+
+The upstream list is built from task **objects** rather than typed-out names, because
+`one_failed` evaluates *direct* upstreams only — a task missing from the list is a failure the
+watcher cannot see. Asserted by `test_watcher_watches_every_other_task`.
+
+---
+
+## D21. Quality checks carry a severity; not every finding should stop a run
+
+**Date**: 2026-08-08
+
+**Decision**: every check in `etl/quality.py` declares `hard_failure` or `warning`.
+Hard failures raise `DataQualityError` before any write; warnings are logged and the run
+continues.
+
+**Why**: originally every check was fatal, which sounds rigorous and is actually a trap — it
+means the only checks worth writing are the ones you are willing to stop production for.
+Anything softer simply never gets written, and the gate stays silent about things worth
+knowing.
+
+The distinction is real here, not decorative. `is_recommended` is unanswered on ~15% of
+reviews and `helpfulness` is undefined wherever nobody voted (D5). Both are legitimately null
+in bulk. Failing a run over that would be wrong; saying nothing would be worse. `check_null_rate`
+warns, so a *shift* — `is_recommended` suddenly arriving 90% null — is visible in the logs
+before it quietly flattens a dashboard number.
+
+Warnings are logged **before** the hard-failure raise, so a run that dies still leaves its
+warnings behind rather than losing them.
+
+`check_unique_key` stays a **hard** failure despite being survivable: `ON CONFLICT DO NOTHING`
+would absorb duplicates without corrupting anything, but the loaded count would then silently
+disagree with the extracted count — precisely the gap D19 exists to close.
+
+---
+
+## D22. Analytics SQL is split into views and validation
+
+**Date**: 2026-08-08
+
+**Decision**: `sql/analytics/views/` holds view DDL. `sql/validation/dashboard_checks.sql`
+holds read-only assertions. They are separate directories.
+
+**Why**: they are opposite jobs sharing one folder. Running the views folder **changes the
+database**; running the validation file **changes nothing** and tells you whether what the
+dashboard shows is true. Mixing them means no one can safely run either without reading it
+first.
+
+The validation file now reconciles every view back to `fact_reviews` — all 8 full-population
+views return exactly 1,093,371 — and labels the two deliberate subsets
+(`vw_rating_by_skin_type` is Skincare-only, `vw_hype_vs_reality` requires ≥50 reviews) so a
+smaller number reads as intentional rather than as loss. The rule is stated in the file: **if
+the dashboard and this file disagree, the dashboard is wrong.**
 
 ---
 
