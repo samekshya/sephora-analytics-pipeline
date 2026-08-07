@@ -37,6 +37,12 @@ reviewer attributes move into `dim_reviewer_profile`, a junk dimension holding o
 distinct `(skin_tone, skin_type, eye_color, hair_color)` combination — 2,003 rows. In the OLTP
 layer they sit on `3nf.review` as FKs to four small lookup tables.
 
+> **Correction (2026-08-08)**: the loaded dimension holds **1,896 rows, not 2,003**. 2,003 is
+> the number of distinct combinations in the *raw* data; cleaning collapses `'notSureST'` to
+> `'Unknown'` and `'Grey'` to `'gray'` before the dimension is built. The 2,003 figure was
+> measured correctly and then applied to the wrong thing. Left in place above rather than
+> silently edited — the entry is a record of what was decided and known at the time.
+
 **Why**: an earlier hand-written schema of mine (`reference/02_warehouse_schema.sql`) modelled
 these as attributes of `dim_customer`, keyed `UNIQUE (customer_id)`. Tested against the data
 before building on it:
@@ -63,8 +69,9 @@ the values simply differ between submissions. Putting the four columns directly 
 `fact_reviews` would work but means 1M rows carrying four repeated text values.
 
 A junk dimension is the standard Kimball treatment for exactly this: several low-cardinality,
-correlated attributes that don't justify separate dimensions. 2,003 rows of the 4,200
-theoretically possible combinations actually occur.
+correlated attributes that don't justify separate dimensions. 2,003 of the 4,200 theoretically
+possible combinations occur in the raw data — 1,896 once cleaning collapses the two known
+value defects, which is the loaded row count (see the correction above).
 
 ---
 

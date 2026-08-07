@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS staging.product (
 -- The 'Unknown' mapping happens HERE, not in 3nf. In the normalized layer a
 -- missing answer is correctly a NULL FK; in the warehouse it has to be a real
 -- dimension member, because a junk dimension with NULL columns cannot be joined
--- to or filtered on in Power BI. Two layers, two correct answers.
+-- to or filtered on in the dashboard. Two layers, two correct answers.
 CREATE TABLE IF NOT EXISTS staging.review (
     review_id                 BIGINT PRIMARY KEY,
     source_row_id             BIGINT NOT NULL,

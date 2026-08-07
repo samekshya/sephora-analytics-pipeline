@@ -1,15 +1,19 @@
 -- dim_reviewer_profile: a JUNK DIMENSION — one row per distinct combination of
--- the four reviewer attributes (2,003 expected, of 4,200 theoretically possible).
+-- the four reviewer attributes (1,896 expected, of 4,200 theoretically possible).
+--
+-- 1,896, not 2,003: the raw data holds 2,003 distinct combinations, but cleaning
+-- collapses 'notSureST' -> 'Unknown' and 'Grey' -> 'gray' first. Earlier comments
+-- here cited the pre-cleaning figure for the loaded table, which was wrong.
 --
 -- Four low-cardinality, correlated attributes that each describe the reviewer as
 -- they described themselves on one particular review. Four separate dimensions
 -- would mean four more FK columns on a 1.09M-row fact table for no analytic
 -- gain; four text columns on the fact itself would mean 1.09M repeated strings.
--- Bundling them into one dimension is the standard Kimball answer, and 2,003
+-- Bundling them into one dimension is the standard Kimball answer, and 1,896
 -- rows is nothing to join against.
 --
 -- No NULLs: missing answers became 'Unknown' at the staging boundary. A junk
--- dimension with NULL members cannot be filtered on in Power BI, and 'Unknown'
+-- dimension with NULL members cannot be filtered on in the dashboard, and 'Unknown'
 -- is a real and meaningful answer here — it means the reviewer chose not to say.
 CREATE TABLE IF NOT EXISTS dw.dim_reviewer_profile (
     reviewer_profile_key  SERIAL PRIMARY KEY,

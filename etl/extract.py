@@ -100,7 +100,10 @@ def extract_customers(conn):
 
 
 def extract_reviewer_profiles(conn):
-  """Distinct four-attribute combinations — 2,003 rows for the junk dimension.
+  """Distinct four-attribute combinations — 1,896 rows for the junk dimension.
+
+  1,896, not the 2,003 combinations present in the RAW data: cleaning collapses
+  'notSureST' to 'Unknown' and 'Grey' to 'gray' before this runs.
 
   DISTINCT in SQL rather than drop_duplicates in pandas: the database can do it
   against an index without shipping 1.09M rows over the wire first.

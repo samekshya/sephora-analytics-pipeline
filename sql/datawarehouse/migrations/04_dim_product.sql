@@ -12,7 +12,7 @@
 --
 -- price_band is a derived attribute computed in etl/transform.py, not stored in
 -- the source. Banding happens once, in the ETL, so every visual that groups by
--- price uses identical boundaries; computing it per-visual in Power BI is how
+-- price uses identical boundaries; computing it per-visual in the dashboard is how
 -- two charts end up disagreeing.
 CREATE TABLE IF NOT EXISTS dw.dim_product (
     product_key         SERIAL PRIMARY KEY,

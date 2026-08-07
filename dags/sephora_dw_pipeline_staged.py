@@ -274,7 +274,7 @@ def sephora_dw_pipeline_staged():
     @task
     def extract_fact_to_staging(**context):
         """Captures the watermark BEFORE any write happens this run, extracts the
-        review batch, stages it, and returns {watermark, full_reload} as a small
+        review batch, stages it, and returns {watermark, mode, rows_extracted} as a small
         XCom consumed by nothing else - the value is recorded so the run's own
         logs show which watermark it used."""
         batch_id = context["run_id"]
