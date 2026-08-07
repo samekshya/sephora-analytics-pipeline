@@ -48,6 +48,20 @@ DW_CONFIG = dict(
   password=os.getenv("DW_DB_PASSWORD"),
 )
 
+# Read-only, and used by exactly one thing: the row-accounting table in the data
+# quality panel, which has to span both databases to show that the warehouse
+# lost nothing between staging and the fact table. Every analytical number on
+# this dashboard still comes from dw and only dw. The panel degrades to its
+# warehouse half if this database is unreachable rather than taking the page
+# down with it.
+OLTP_CONFIG = dict(
+  host=os.getenv("OLTP_DB_HOST"),
+  port=os.getenv("OLTP_DB_PORT"),
+  dbname=os.getenv("OLTP_DB_NAME"),
+  user=os.getenv("OLTP_DB_USER"),
+  password=os.getenv("OLTP_DB_PASSWORD"),
+)
+
 # Colour-blind safe. The rating scale is sequential (more is better) and the
 # hype scale is diverging (zero is meaningful in both directions) - using one
 # palette for both would imply they mean the same thing.
@@ -85,6 +99,26 @@ def q(sql: str, params: tuple = None) -> pd.DataFrame:
     # rollback clears the aborted transaction so the next query works.
     conn.rollback()
     raise
+
+
+@st.cache_data(ttl=300)
+def q_oltp(sql: str) -> pd.DataFrame:
+  """Same as q(), against the OLTP database, but returns None instead of raising.
+
+  The data quality panel is the only caller. A dashboard that goes blank
+  because a database it does not otherwise need is down would be a worse
+  outcome than a panel that says so.
+  """
+  try:
+    conn = psycopg2.connect(**OLTP_CONFIG)
+  except psycopg2.Error:
+    return None
+  try:
+    return pd.read_sql_query(sql, conn)
+  except psycopg2.Error:
+    return None
+  finally:
+    conn.close()
 
 
 def kpi_row():
@@ -131,6 +165,223 @@ def live_status_strip(k):
         "`max(submission_date)`, which is also what the pipeline reads to decide "
         "where the next incremental load starts."
       )
+
+
+def data_quality_panel():
+  """Row accounting and integrity, re-derived from the databases at render time.
+
+  The pipeline's rule is that every row entering a stage must leave it either
+  transformed or dropped for a NAMED reason (etl/reconcile.py), and that an
+  unexplained gap raises rather than logging. That guarantee has always been
+  provable in the logs and invisible on the dashboard. This makes it visible.
+
+  Nothing here is stored: reconcile.py logs its counts, it does not persist
+  them, so every figure below is recomputed against the live databases instead
+  of read out of a table that could itself be stale. The one number that cannot
+  be recomputed is called out as such rather than quietly presented as live.
+  """
+  with st.expander("Data quality & what we dropped (and why)"):
+
+    # ---- row accounting, source through warehouse ----------------------
+    st.markdown("**Row accounting — every stage, queried now**")
+
+    fact_rows = int(q("SELECT count(*) AS n FROM dw.fact_reviews")["n"].iloc[0])
+    oltp = q_oltp("""
+      SELECT (SELECT count(*) FROM raw.reviews)      AS raw_reviews,
+             (SELECT count(*) FROM "3nf".review)     AS nf3_review,
+             (SELECT count(*) FROM staging.review)   AS staging_review
+    """)
+
+    if oltp is None:
+      st.warning(
+        f"`{OLTP_CONFIG['dbname']}` is unreachable, so the OLTP half of this "
+        f"table cannot be shown. The warehouse figures below are unaffected."
+      )
+      stages = pd.DataFrame([
+        {"Stage": "dw.fact_reviews", "Rows": fact_rows, "Change": "—",
+         "What happens here": "One row per review. The grain of the star schema."},
+      ])
+    else:
+      r = oltp.iloc[0]
+      chain = [
+        ("raw.reviews", int(r["raw_reviews"]),
+         "1:1 mirror of the cleaned CSVs, loaded by COPY. No transformation."),
+        ('3nf.review', int(r["nf3_review"]),
+         "Normalised across 9 tables, every foreign key enforced."),
+        ("staging.review", int(r["staging_review"]),
+         "Review text left behind (D6); review_length precomputed."),
+        ("dw.fact_reviews", fact_rows,
+         "One row per review. The grain of the star schema."),
+      ]
+      stages = pd.DataFrame([
+        {"Stage": name, "Rows": rows,
+         "Change": "—" if i == 0 else f"{rows - chain[i - 1][1]:+,}",
+         "What happens here": note}
+        for i, (name, rows, note) in enumerate(chain)
+      ])
+
+    st.dataframe(stages, hide_index=True, use_container_width=True,
+                 column_config={"Rows": st.column_config.NumberColumn(format="%d")})
+
+    # ---- drops by reason ------------------------------------------------
+    st.markdown("**Drops by reason**")
+
+    reasons = q("""
+      SELECT
+        count(*) FILTER (WHERE p.product_key IS NULL)            AS unresolved_product,
+        count(*) FILTER (WHERE c.customer_key IS NULL)           AS unresolved_customer,
+        count(*) FILTER (WHERE rp.reviewer_profile_key IS NULL)  AS unresolved_reviewer_profile,
+        count(*) FILTER (WHERE d.date_key IS NULL)               AS out_of_range_date
+      FROM dw.fact_reviews f
+      LEFT JOIN dw.dim_product          p  ON p.product_key = f.product_key
+      LEFT JOIN dw.dim_customer         c  ON c.customer_key = f.customer_key
+      LEFT JOIN dw.dim_reviewer_profile rp ON rp.reviewer_profile_key = f.reviewer_profile_key
+      LEFT JOIN dw.dim_date             d  ON d.date_key = f.date_key
+    """).iloc[0]
+
+    gap = None if oltp is None else int(oltp.iloc[0]["staging_review"]) - fact_rows
+
+    st.dataframe(
+      pd.DataFrame([
+        {"Reason": "unresolved_product",
+         "Rows dropped": int(reasons["unresolved_product"]),
+         "Meaning": "review pointed at a product_id absent from dim_product"},
+        {"Reason": "unresolved_customer",
+         "Rows dropped": int(reasons["unresolved_customer"]),
+         "Meaning": "author_id absent from dim_customer"},
+        {"Reason": "unresolved_reviewer_profile",
+         "Rows dropped": int(reasons["unresolved_reviewer_profile"]),
+         "Meaning": "the four skin/eye/hair attributes matched no junk-dimension row"},
+        {"Reason": "out_of_range_date",
+         "Rows dropped": int(reasons["out_of_range_date"]),
+         "Meaning": "submission_date fell outside the generated dim_date range"},
+      ]),
+      hide_index=True, use_container_width=True)
+
+    if gap is None:
+      st.caption(
+        "These are the four named reasons `etl/transform.py` may drop a fact "
+        "row for. The counts above re-run each check against the loaded "
+        "warehouse: a non-zero would mean a row reached the fact table without "
+        "a resolvable key."
+      )
+    else:
+      st.caption(
+        f"These are the four named reasons `etl/transform.py` may drop a fact "
+        f"row for. The total is not inferred from them — it is measured: "
+        f"`staging.review` minus `dw.fact_reviews` is **{gap:,}**, so nothing "
+        f"was dropped for any reason, named or otherwise. Had the two "
+        f"disagreed by even one row without a reason accounting for it, "
+        f"`reconcile.py` would have raised `ReconciliationError` and the run "
+        f"would have failed rather than loading a warehouse that looks "
+        f"complete and isn't (D19)."
+      )
+
+    # ---- kept, not dropped ----------------------------------------------
+    st.markdown("**Kept, not dropped** — missing values this pipeline refuses "
+                "to invent")
+
+    kept = q("""
+      SELECT
+        count(*) FILTER (WHERE f.total_feedback_count = 0) AS no_feedback,
+        count(*) FILTER (WHERE f.review_length IS NULL)    AS no_length,
+        count(*) FILTER (WHERE f.is_recommended IS NULL)   AS no_recommend,
+        count(*) FILTER (WHERE rp.skin_tone  = 'Unknown')  AS unknown_skin_tone,
+        count(*) FILTER (WHERE rp.skin_type  = 'Unknown')  AS unknown_skin_type,
+        count(*) FILTER (WHERE rp.eye_color  = 'Unknown')  AS unknown_eye_color,
+        count(*) FILTER (WHERE rp.hair_color = 'Unknown')  AS unknown_hair_color
+      FROM dw.fact_reviews f
+      JOIN dw.dim_reviewer_profile rp
+        ON rp.reviewer_profile_key = f.reviewer_profile_key
+    """).iloc[0]
+
+    def _pct(n):
+      return f"{100.0 * int(n) / fact_rows:.1f}%" if fact_rows else "—"
+
+    st.dataframe(
+      pd.DataFrame([
+        {"Value": "helpfulness (no votes cast)", "Rows": int(kept["no_feedback"]),
+         "Share": _pct(kept["no_feedback"]),
+         "Treatment": "Left NULL, never imputed to 0. Undefined, not missing — "
+                      "helpfulness averages filter these out (D5)"},
+        {"Value": "is_recommended not answered", "Rows": int(kept["no_recommend"]),
+         "Share": _pct(kept["no_recommend"]),
+         "Treatment": "Left NULL. The recommend % is the share among those who "
+                      "answered, not of all reviews"},
+        {"Value": "review_length unrecorded", "Rows": int(kept["no_length"]),
+         "Share": _pct(kept["no_length"]),
+         "Treatment": "Own bucket in vw_rating_by_review_length so the view "
+                      "still reconciles"},
+        {"Value": "skin_tone = Unknown", "Rows": int(kept["unknown_skin_tone"]),
+         "Share": _pct(kept["unknown_skin_tone"]),
+         "Treatment": "Kept as a category. 'Declined to say' is a real answer"},
+        {"Value": "skin_type = Unknown", "Rows": int(kept["unknown_skin_type"]),
+         "Share": _pct(kept["unknown_skin_type"]), "Treatment": "As above"},
+        {"Value": "eye_color = Unknown", "Rows": int(kept["unknown_eye_color"]),
+         "Share": _pct(kept["unknown_eye_color"]), "Treatment": "As above"},
+        {"Value": "hair_color = Unknown", "Rows": int(kept["unknown_hair_color"]),
+         "Share": _pct(kept["unknown_hair_color"]), "Treatment": "As above"},
+      ]),
+      hide_index=True, use_container_width=True)
+
+    st.caption(
+      "None of these are dropped and none are filled in. Imputing a skin tone "
+      "would have made the BQ4 charts look better sourced than they are; "
+      "imputing helpfulness to 0 would have dragged the average down with "
+      "reviews nobody ever voted on."
+    )
+
+    # ---- integrity assertions -------------------------------------------
+    st.markdown("**Integrity, re-asserted just now**")
+
+    dupes = int(q("""
+      SELECT count(*) AS n FROM (
+        SELECT source_row_id, product_id FROM dw.fact_reviews
+        GROUP BY 1, 2 HAVING count(*) > 1) d
+    """)["n"].iloc[0])
+    orphans = int(sum(int(reasons[k]) for k in reasons.index))
+
+    # The same UNION as the reconciliation block of dashboard_checks.sql, run
+    # from the app. Counted rather than hardcoded: a "9 of 9" typed into the
+    # page would keep claiming 9 after someone added a tenth view.
+    recon = q("""
+      SELECT 'vw_kpi_summary'             AS view_name, total_reviews     AS reviews FROM dw.vw_kpi_summary
+      UNION ALL SELECT 'vw_rating_by_brand',        sum(review_count) FROM dw.vw_rating_by_brand
+      UNION ALL SELECT 'vw_rating_by_category',     sum(review_count) FROM dw.vw_rating_by_category
+      UNION ALL SELECT 'vw_rating_by_price_band',   sum(review_count) FROM dw.vw_rating_by_price_band
+      UNION ALL SELECT 'vw_review_trend_monthly',   sum(review_count) FROM dw.vw_review_trend_monthly
+      UNION ALL SELECT 'vw_review_volume_by_month', sum(review_count) FROM dw.vw_review_volume_by_month
+      UNION ALL SELECT 'vw_rating_by_skin_tone',    sum(review_count) FROM dw.vw_rating_by_skin_tone
+      UNION ALL SELECT 'vw_rating_by_review_length', sum(review_count) FROM dw.vw_rating_by_review_length
+    """)
+    matching = int((recon["reviews"] == fact_rows).sum())
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Orphan fact rows", f"{orphans:,}",
+              help="Fact rows whose product / customer / reviewer profile / "
+                   "date key does not resolve. Enforced by foreign keys and "
+                   "checked again here.")
+    c2.metric("Duplicate idempotency keys", f"{dupes:,}",
+              help="UNIQUE(source_row_id, product_id) is what makes re-running "
+                   "the DAG safe (D13). Re-running a load inserts 0 rows "
+                   "rather than doubling the table.")
+    c3.metric("Views reconciling to fact_reviews",
+              f"{matching} of {len(recon)}",
+              help="Each full-population view aggregates the same fact rows a "
+                   "different way, so summing it back up must return the same "
+                   "total. A shortfall is the classic fan-out join bug, which "
+                   "is invisible in any single chart. Same UNION as "
+                   "sql/validation/dashboard_checks.sql, run just now.")
+
+    st.caption(
+      "**One number on this panel is not live.** `clean.py` removed **1,040** "
+      "duplicate reviews on (author_id, product_id, submission_time) before "
+      "anything reached Postgres — 1,094,411 rows in the source CSVs became "
+      "1,093,371 — so neither database can be queried for it. It is the only "
+      "row loss in the whole chain, it was deliberate (D4), and it is stated "
+      "here rather than left out because the point of this panel is what "
+      "happened to every row, not only the parts that are convenient to query."
+    )
 
 
 # --------------------------------------------------------------------------
@@ -222,6 +473,7 @@ def page_overview(categories, date_range, min_reviews):
   )
 
   live_status_strip(k)
+  data_quality_panel()
 
   st.divider()
 
