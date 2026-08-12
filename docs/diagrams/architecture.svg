@@ -1,0 +1,113 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1840" height="748" viewBox="0 0 1840 748" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif">
+<rect width="1840" height="748" fill="#FFFFFF"/>
+<defs>
+  <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7"
+          markerHeight="7" orient="auto-start-reverse">
+    <path d="M0,1 L9,5 L0,9 z" fill="#D6001C"/>
+  </marker>
+  <marker id="arrow-light" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7"
+          markerHeight="7" orient="auto-start-reverse">
+    <path d="M0,1 L9,5 L0,9 z" fill="#F5EFED"/>
+  </marker>
+  <marker id="dot" viewBox="0 0 8 8" refX="4" refY="4" markerWidth="5"
+          markerHeight="5">
+    <circle cx="4" cy="4" r="3.4" fill="#D6001C"/>
+  </marker>
+</defs>
+<rect x="60" y="30" width="300" height="446" rx="16" ry="16" fill="#FBF7F6" stroke="#E0D5D1" stroke-width="1.5"/>
+<path d="M60,76 L60,46 Q60,30 76,30 L344,30 Q360,30 360,46 L360,76 Z" fill="#17110F"/>
+<text x="210.0" y="59" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="13.5" fill="#FFFFFF" text-anchor="middle" font-weight="700" letter-spacing="1.1">SOURCE FILES</text>
+<rect x="76" y="98" width="268" height="108" rx="10" ry="10" fill="#FFFFFF" stroke="#E0D5D1" stroke-width="1.2"/>
+<text x="92" y="130" font-family="'Cascadia Mono',Consolas,'SF Mono',Menlo,monospace" font-size="14.5" fill="#17110F" text-anchor="start" font-weight="600">product_info.csv</text>
+<text x="92" y="156" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12.5" fill="#7C6F6A" text-anchor="start" font-weight="400">8,494 rows × 27 columns</text>
+<text x="92" y="177" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12.5" fill="#7C6F6A" text-anchor="start" font-weight="400">one row per catalogue product</text>
+<rect x="76" y="220" width="268" height="108" rx="10" ry="10" fill="#FFFFFF" stroke="#E0D5D1" stroke-width="1.2"/>
+<text x="92" y="252" font-family="'Cascadia Mono',Consolas,'SF Mono',Menlo,monospace" font-size="14.5" fill="#17110F" text-anchor="start" font-weight="600">reviews_*.csv  (5 files)</text>
+<text x="92" y="278" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12.5" fill="#7C6F6A" text-anchor="start" font-weight="400">1,094,411 rows</text>
+<text x="92" y="299" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12.5" fill="#7C6F6A" text-anchor="start" font-weight="400">one row per written review</text>
+<rect x="76" y="342" width="268" height="108" rx="10" ry="10" fill="#FFFFFF" stroke="#E0D5D1" stroke-width="1.2"/>
+<text x="92" y="374" font-family="'Cascadia Mono',Consolas,'SF Mono',Menlo,monospace" font-size="14.5" fill="#17110F" text-anchor="start" font-weight="600">Kaggle, public dataset</text>
+<text x="92" y="400" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12.5" fill="#7C6F6A" text-anchor="start" font-weight="400">Sephora catalogue and</text>
+<text x="92" y="421" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12.5" fill="#7C6F6A" text-anchor="start" font-weight="400">skincare reviews, 2008–2023</text>
+<rect x="530" y="30" width="300" height="446" rx="16" ry="16" fill="#FBF7F6" stroke="#E0D5D1" stroke-width="1.5"/>
+<path d="M530,76 L530,46 Q530,30 546,30 L814,30 Q830,30 830,46 L830,76 Z" fill="#17110F"/>
+<text x="680.0" y="59" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="13.5" fill="#FFFFFF" text-anchor="middle" font-weight="700" letter-spacing="1.1">OLTP  ·  sephora_oltp</text>
+<rect x="546" y="98" width="268" height="108" rx="10" ry="10" fill="#FFFFFF" stroke="#E0D5D1" stroke-width="1.2"/>
+<text x="562" y="130" font-family="'Cascadia Mono',Consolas,'SF Mono',Menlo,monospace" font-size="14.5" fill="#17110F" text-anchor="start" font-weight="600">raw</text>
+<text x="562" y="156" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12.5" fill="#7C6F6A" text-anchor="start" font-weight="400">1:1 mirror of the CSVs</text>
+<text x="562" y="177" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12.5" fill="#7C6F6A" text-anchor="start" font-weight="400">loaded by COPY, nothing dropped</text>
+<rect x="546" y="220" width="268" height="108" rx="10" ry="10" fill="#FFFFFF" stroke="#E0D5D1" stroke-width="1.2"/>
+<text x="562" y="252" font-family="'Cascadia Mono',Consolas,'SF Mono',Menlo,monospace" font-size="14.5" fill="#17110F" text-anchor="start" font-weight="600">3nf</text>
+<text x="562" y="278" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12.5" fill="#7C6F6A" text-anchor="start" font-weight="400">9 tables, FKs enforced</text>
+<text x="562" y="299" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12.5" fill="#7C6F6A" text-anchor="start" font-weight="400">redundancy removed</text>
+<rect x="546" y="342" width="268" height="108" rx="10" ry="10" fill="#FFFFFF" stroke="#E0D5D1" stroke-width="1.2"/>
+<text x="562" y="374" font-family="'Cascadia Mono',Consolas,'SF Mono',Menlo,monospace" font-size="14.5" fill="#17110F" text-anchor="start" font-weight="600">staging</text>
+<text x="562" y="400" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12.5" fill="#7C6F6A" text-anchor="start" font-weight="400">flattened, no review text</text>
+<text x="562" y="421" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12.5" fill="#7C6F6A" text-anchor="start" font-weight="400">the ETL's only read surface</text>
+<rect x="1000" y="30" width="300" height="446" rx="16" ry="16" fill="#FBF7F6" stroke="#E0D5D1" stroke-width="1.5"/>
+<path d="M1000,76 L1000,46 Q1000,30 1016,30 L1284,30 Q1300,30 1300,46 L1300,76 Z" fill="#17110F"/>
+<text x="1150.0" y="59" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="13.5" fill="#FFFFFF" text-anchor="middle" font-weight="700" letter-spacing="1.1">WAREHOUSE  ·  sephora_dw</text>
+<rect x="1016" y="98" width="268" height="108" rx="10" ry="10" fill="#FFFFFF" stroke="#E0D5D1" stroke-width="1.2"/>
+<text x="1032" y="130" font-family="'Cascadia Mono',Consolas,'SF Mono',Menlo,monospace" font-size="14.5" fill="#17110F" text-anchor="start" font-weight="600">5 dimensions</text>
+<text x="1032" y="156" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12.5" fill="#7C6F6A" text-anchor="start" font-weight="400">product · brand · customer</text>
+<text x="1032" y="177" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12.5" fill="#7C6F6A" text-anchor="start" font-weight="400">reviewer profile · date</text>
+<rect x="1016" y="220" width="268" height="108" rx="10" ry="10" fill="#FFFFFF" stroke="#E0D5D1" stroke-width="1.2"/>
+<text x="1032" y="252" font-family="'Cascadia Mono',Consolas,'SF Mono',Menlo,monospace" font-size="14.5" fill="#17110F" text-anchor="start" font-weight="600">fact_reviews</text>
+<text x="1032" y="278" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12.5" fill="#7C6F6A" text-anchor="start" font-weight="400">1,093,371 rows</text>
+<text x="1032" y="299" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12.5" fill="#7C6F6A" text-anchor="start" font-weight="400">grain: one row per review</text>
+<rect x="1016" y="342" width="268" height="108" rx="10" ry="10" fill="#FFFFFF" stroke="#E0D5D1" stroke-width="1.2"/>
+<text x="1032" y="374" font-family="'Cascadia Mono',Consolas,'SF Mono',Menlo,monospace" font-size="14.5" fill="#17110F" text-anchor="start" font-weight="600">11 analytics views</text>
+<text x="1032" y="400" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12.5" fill="#7C6F6A" text-anchor="start" font-weight="400">the dashboard's only</text>
+<text x="1032" y="421" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12.5" fill="#7C6F6A" text-anchor="start" font-weight="400">read surface</text>
+<rect x="1470" y="30" width="300" height="446" rx="16" ry="16" fill="#FBF7F6" stroke="#E0D5D1" stroke-width="1.5"/>
+<path d="M1470,76 L1470,46 Q1470,30 1486,30 L1754,30 Q1770,30 1770,46 L1770,76 Z" fill="#17110F"/>
+<text x="1620.0" y="59" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="13.5" fill="#FFFFFF" text-anchor="middle" font-weight="700" letter-spacing="1.1">DASHBOARD  ·  Streamlit</text>
+<rect x="1486" y="98" width="268" height="108" rx="10" ry="10" fill="#FFFFFF" stroke="#E0D5D1" stroke-width="1.2"/>
+<text x="1502" y="130" font-family="'Cascadia Mono',Consolas,'SF Mono',Menlo,monospace" font-size="14.5" fill="#17110F" text-anchor="start" font-weight="600">One page, live connection</text>
+<text x="1502" y="156" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12.5" fill="#7C6F6A" text-anchor="start" font-weight="400">queries Postgres on every</text>
+<text x="1502" y="177" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12.5" fill="#7C6F6A" text-anchor="start" font-weight="400">filter change</text>
+<rect x="1486" y="220" width="268" height="108" rx="10" ry="10" fill="#FFFFFF" stroke="#E0D5D1" stroke-width="1.2"/>
+<text x="1502" y="252" font-family="'Cascadia Mono',Consolas,'SF Mono',Menlo,monospace" font-size="14.5" fill="#17110F" text-anchor="start" font-weight="600">5 business questions</text>
+<text x="1502" y="278" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12.5" fill="#7C6F6A" text-anchor="start" font-weight="400">BQ1-BQ5, each backed</text>
+<text x="1502" y="299" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12.5" fill="#7C6F6A" text-anchor="start" font-weight="400">by a named view</text>
+<rect x="1486" y="342" width="268" height="108" rx="10" ry="10" fill="#FFFFFF" stroke="#E0D5D1" stroke-width="1.2"/>
+<text x="1502" y="374" font-family="'Cascadia Mono',Consolas,'SF Mono',Menlo,monospace" font-size="14.5" fill="#17110F" text-anchor="start" font-weight="600">4 query-bound controls</text>
+<text x="1502" y="400" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12.5" fill="#7C6F6A" text-anchor="start" font-weight="400">filters are SQL parameters,</text>
+<text x="1502" y="421" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12.5" fill="#7C6F6A" text-anchor="start" font-weight="400">not dataframe filters</text>
+<line x1="374" y1="268" x2="516" y2="268" stroke="#D6001C" stroke-width="2.5" marker-end="url(#arrow)"/>
+<text x="445.0" y="248" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="14" fill="#17110F" text-anchor="middle" font-weight="700">clean.py  ·  ingest.py</text>
+<text x="445.0" y="302" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12" fill="#7C6F6A" text-anchor="middle" font-weight="400">dedupe, normalise, COPY</text>
+<line x1="844" y1="268" x2="986" y2="268" stroke="#D6001C" stroke-width="2.5" marker-end="url(#arrow)"/>
+<text x="915.0" y="248" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="14" fill="#17110F" text-anchor="middle" font-weight="700">etl/ package</text>
+<text x="915.0" y="302" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12" fill="#7C6F6A" text-anchor="middle" font-weight="400">extract → transform → load</text>
+<line x1="1314" y1="268" x2="1456" y2="268" stroke="#D6001C" stroke-width="2.5" marker-end="url(#arrow)"/>
+<text x="1385.0" y="248" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="14" fill="#17110F" text-anchor="middle" font-weight="700">analytics views</text>
+<text x="1385.0" y="302" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12" fill="#7C6F6A" text-anchor="middle" font-weight="400">11 read-only SQL views</text>
+<rect x="60" y="536" width="1720" height="168" rx="16" ry="16" fill="#17110F" stroke="#17110F" stroke-width="2"/>
+<text x="86" y="576" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="14" fill="#D6001C" text-anchor="start" font-weight="700" letter-spacing="1.6">APACHE AIRFLOW</text>
+<text x="260" y="576" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="14" fill="#CBBCB7" text-anchor="start" font-weight="400">dags/sephora_dw_pipeline_staged.py  —  15 tasks, 21 edges  ·  modes: full · historical · incremental (watermark)</text>
+<rect x="86.0" y="614" width="185.75" height="52" rx="10" ry="10" fill="#221A17" stroke="#453733" stroke-width="1.5"/>
+<text x="178.875" y="646" font-family="'Cascadia Mono',Consolas,'SF Mono',Menlo,monospace" font-size="12.5" fill="#F2E9E6" text-anchor="middle" font-weight="600">create_staging</text>
+<line x1="276.75" y1="640" x2="292.75" y2="640" stroke="#6B5B56" stroke-width="2" marker-end="url(#arrow-light)"/>
+<rect x="297.75" y="614" width="185.75" height="52" rx="10" ry="10" fill="#221A17" stroke="#453733" stroke-width="1.5"/>
+<text x="390.625" y="646" font-family="'Cascadia Mono',Consolas,'SF Mono',Menlo,monospace" font-size="12.5" fill="#F2E9E6" text-anchor="middle" font-weight="600">extract dims</text>
+<line x1="488.5" y1="640" x2="504.5" y2="640" stroke="#6B5B56" stroke-width="2" marker-end="url(#arrow-light)"/>
+<rect x="509.5" y="614" width="185.75" height="52" rx="10" ry="10" fill="#221A17" stroke="#453733" stroke-width="1.5"/>
+<text x="602.375" y="646" font-family="'Cascadia Mono',Consolas,'SF Mono',Menlo,monospace" font-size="12.5" fill="#F2E9E6" text-anchor="middle" font-weight="600">load dims</text>
+<line x1="700.25" y1="640" x2="716.25" y2="640" stroke="#6B5B56" stroke-width="2" marker-end="url(#arrow-light)"/>
+<rect x="721.25" y="614" width="185.75" height="52" rx="10" ry="10" fill="#221A17" stroke="#453733" stroke-width="1.5"/>
+<text x="814.125" y="646" font-family="'Cascadia Mono',Consolas,'SF Mono',Menlo,monospace" font-size="12.5" fill="#F2E9E6" text-anchor="middle" font-weight="600">extract fact</text>
+<line x1="912.0" y1="640" x2="928.0" y2="640" stroke="#6B5B56" stroke-width="2" marker-end="url(#arrow-light)"/>
+<rect x="933.0" y="614" width="185.75" height="52" rx="10" ry="10" fill="#221A17" stroke="#453733" stroke-width="1.5"/>
+<text x="1025.875" y="646" font-family="'Cascadia Mono',Consolas,'SF Mono',Menlo,monospace" font-size="12.5" fill="#F2E9E6" text-anchor="middle" font-weight="600">transform</text>
+<line x1="1123.75" y1="640" x2="1139.75" y2="640" stroke="#6B5B56" stroke-width="2" marker-end="url(#arrow-light)"/>
+<rect x="1144.75" y="614" width="185.75" height="52" rx="10" ry="10" fill="#221A17" stroke="#453733" stroke-width="1.5"/>
+<text x="1237.625" y="646" font-family="'Cascadia Mono',Consolas,'SF Mono',Menlo,monospace" font-size="12.5" fill="#F2E9E6" text-anchor="middle" font-weight="600">quality gate</text>
+<line x1="1335.5" y1="640" x2="1351.5" y2="640" stroke="#6B5B56" stroke-width="2" marker-end="url(#arrow-light)"/>
+<rect x="1356.5" y="614" width="185.75" height="52" rx="10" ry="10" fill="#221A17" stroke="#453733" stroke-width="1.5"/>
+<text x="1449.375" y="646" font-family="'Cascadia Mono',Consolas,'SF Mono',Menlo,monospace" font-size="12.5" fill="#F2E9E6" text-anchor="middle" font-weight="600">load fact</text>
+<line x1="1547.25" y1="640" x2="1563.25" y2="640" stroke="#6B5B56" stroke-width="2" marker-end="url(#arrow-light)"/>
+<rect x="1568.25" y="614" width="185.75" height="52" rx="10" ry="10" fill="#221A17" stroke="#D6001C" stroke-width="1.5" stroke-dasharray="5 4"/>
+<text x="1661.125" y="646" font-family="'Cascadia Mono',Consolas,'SF Mono',Menlo,monospace" font-size="12.5" fill="#D6001C" text-anchor="middle" font-weight="600">cleanup (teardown)</text>
+<text x="86" y="688" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12.5" fill="#9C8B85" text-anchor="start" font-weight="400" font-style="italic">cleanup is a teardown: it runs after failures so staging is never stranded, and is excluded from run state so a failed run stays red (D24)</text>
+</svg>
