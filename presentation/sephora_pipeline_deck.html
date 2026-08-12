@@ -28,6 +28,13 @@
     --white: #FFFFFF;
     --black: #17110F;
 
+    /* Bodoni Moda is a Didone: thick stems, hairline horizontals and serifs.
+       Left to itself at display sizes it is too light to project — the `opsz`
+       axis auto-selects a display cut whose hairlines go sub-pixel and drop out
+       under a projector's light bleed, and the ink/ivory contrast ratio does
+       not save a stroke that is not physically there. Every use of this face
+       therefore pins `opsz` low, where the hairlines are drawn sturdy, and runs
+       heavier than a Didone normally would. */
     --font-display: 'Bodoni Moda', Georgia, serif;
     --font-body: 'Archivo', 'Helvetica Neue', sans-serif;
     --font-mono: 'JetBrains Mono', Consolas, monospace;
@@ -199,9 +206,11 @@ body { font-family: var(--font-body); color: var(--ink); }
 h2 {
     font-family: var(--font-display);
     font-size: 60px;
-    font-weight: 600;
+    font-weight: 700;
+    font-optical-sizing: none;
+    font-variation-settings: 'opsz' 14;
     line-height: 1.08;
-    letter-spacing: -0.01em;
+    letter-spacing: -0.005em;
     margin-top: 14px;
 }
 
@@ -339,8 +348,9 @@ code, .mono { font-family: var(--font-mono); font-size: 0.92em; }
 .statgrid { display: grid; gap: 20px; }
 .stat { background: var(--white); border: 1px solid var(--line); border-radius: 14px;
     padding: 22px 24px; }
-.stat .v { font-family: var(--font-display); font-size: 46px; font-weight: 600;
-    line-height: 1; letter-spacing: -0.01em; }
+.stat .v { font-family: var(--font-display); font-size: 46px; font-weight: 700;
+    font-optical-sizing: none; font-variation-settings: 'opsz' 14;
+    line-height: 1; letter-spacing: -0.005em; }
 .stat .k { font-size: 16px; color: var(--muted); margin-top: 10px; line-height: 1.35; }
 .stat.red .v { color: var(--red); }
 
@@ -362,16 +372,22 @@ code, .mono { font-family: var(--font-mono); font-size: 0.92em; }
 .slide.cover { background: var(--black); }
 .cover .inner { justify-content: center; }
 .cover .kicker { color: var(--red); }
+/* White on black thins strokes optically, so the cover runs heavier still than
+   the section titles do against ivory. */
 .cover h1 {
     font-family: var(--font-display);
     font-size: 132px;
-    font-weight: 500;
+    font-weight: 600;
+    font-optical-sizing: none;
+    font-variation-settings: 'opsz' 14;
     line-height: 1.0;
-    letter-spacing: -0.02em;
+    letter-spacing: -0.015em;
     color: var(--white);
     margin-top: 34px;
 }
-.cover h1 em { font-style: italic; font-weight: 400; color: var(--red); }
+/* The red italic is the worst case in the deck: a hairline face, in the
+   lightest style, in the one colour that is not near-black or white. */
+.cover h1 em { font-style: italic; font-weight: 600; color: var(--red); }
 .cover .sub {
     font-size: 30px;
     line-height: 1.5;
@@ -611,7 +627,7 @@ body.editing [data-edit]:focus { outline: 2px solid var(--red); outline-offset: 
 
                 <div class="card black" style="flex: 0.75; display: flex; flex-direction: column; justify-content: center;">
                     <div class="kicker" data-edit>After cleaning</div>
-                    <div style="font-family: var(--font-display); font-size: 72px; font-weight: 600; line-height: 1; margin-top: 18px;">1,093,371</div>
+                    <div style="font-family: var(--font-display); font-size: 72px; font-weight: 700; font-optical-sizing: none; font-variation-settings: 'opsz' 14; line-height: 1; margin-top: 18px;">1,093,371</div>
                     <p style="font-size: 19px; line-height: 1.5; margin-top: 16px;" data-edit>
                         reviews carried forward — 1,040 duplicates removed, 1,030,753 cells
                         whitespace-trimmed, 0 unparseable dates, and <b style="color:#fff;">not one column
