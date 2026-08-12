@@ -1,13 +1,13 @@
 # 08 — Testing Evidence
 
-**51 tests, 51 passing**, plus 11 DAG structural assertions verified inside the
+**49 tests, 49 passing**, plus 11 DAG structural assertions verified inside the
 Airflow container. Last full run: **2026-08-12**.
 
 ```
 tests/unit/test_quality.py                   15 tests   no database needed
 tests/unit/test_transform.py                 17 tests   no database needed
 tests/integration/test_pipeline_reconciliation.py  9 tests   needs Postgres
-tests/integration/test_dashboard_smoke.py    10 tests   needs Postgres + streamlit
+tests/integration/test_dashboard_smoke.py     8 tests   needs Postgres + streamlit
 tests/test_dag_structure.py                  12 tests   needs airflow (skips locally)
 tests/verify_dag_in_container.py             11 asserts runs inside the container
 ```
@@ -19,7 +19,7 @@ tests/verify_dag_in_container.py             11 asserts runs inside the containe
 ```powershell
 py -m pip install -r requirements.txt -r requirements-dev.txt
 
-py -m pytest -q                     # everything    -> 51 passed, 1 skipped
+py -m pytest -q                     # everything    -> 49 passed, 1 skipped
 py -m pytest -m "not integration"   # unit only, no database needed
 py -m pytest tests/unit/test_quality.py -q -k rating    # one concern
 
@@ -99,7 +99,7 @@ differences mattered.
 | `test_empty_incremental_batch_is_clean_noop` | Watermark current → 0 extracted → transform, reconcile and load all handle zero without raising |
 | `test_watermark_matches_max_fact_date` | The watermark cannot disagree with the data it describes, because it is read from it |
 
-### `tests/integration/test_dashboard_smoke.py` — the app actually runs (10)
+### `tests/integration/test_dashboard_smoke.py` — the app actually runs (8)
 
 Runs `dashboard/app.py` through Streamlit's `AppTest` harness.
 
@@ -109,16 +109,19 @@ Runs `dashboard/app.py` through Streamlit's `AppTest` harness.
 
 | Test | Proves |
 |---|---|
-| `test_overview_page_renders` | Page 1 executes with no exception; KPI metrics present |
-| **`test_overview_kpi_matches_the_warehouse`** | **The displayed review count and average rating equal `SELECT count(*), round(avg(rating),3) FROM dw.fact_reviews`.** The dashboard cannot show a number the warehouse disagrees with |
-| `test_deep_dive_page_renders` | Page 2 executes; BQ3 and BQ4 sections present |
-| `test_min_reviews_filter_is_live` | Changing the floor changes the output — the filter re-queries rather than redrawing a cached picture |
-| `test_hype_gap_slider_is_live` | Changing the hype-gap threshold changes the SQL-backed product set |
-| `test_price_range_slider_is_live` | Price bounds are bound into the warehouse query rather than filtering a preloaded frame |
-| `test_skin_group_floor_is_live` | The minimum skin-group sample size changes both BQ4 result sets |
-| `test_review_length_section_renders` | The review-length evidence and both supporting visuals render without an exception |
+| `test_page_renders_with_kpis` | The page executes with no exception; KPI metrics present |
+| **`test_kpis_match_the_warehouse`** | **The displayed review count and average rating equal `SELECT count(*), round(avg(rating),3) FROM dw.fact_reviews`.** The dashboard cannot show a number the warehouse disagrees with |
+| `test_the_page_is_a_single_page` | No page selector survives in the sidebar (D25) |
+| `test_all_five_business_questions_are_on_the_one_page` | BQ1–BQ5 all appear as headings without navigating |
+| `test_min_reviews_filter_is_live` | Changing the floor changes the output — the one surviving control re-queries rather than redrawing a cached picture |
+| `test_review_length_finding_is_stated` | The page keeps stating that the obvious hypothesis fails on this data |
 | `test_review_length_view_reconciles_to_the_fact_table` | Every fact row lands in exactly one review-length bucket |
 | `test_data_quality_panel_reports_the_row_accounting` | The live panel re-derives source, warehouse, and integrity counts rather than reading a stored status claim |
+
+> Three tests were **removed** with the controls they asserted (hype-gap, price-range
+> and skin-group sliders) when D25 reduced the dashboard to one control. They were
+> good tests of a design that no longer exists; keeping them passing would have meant
+> keeping the sliders.
 
 ### DAG structure (12 pytest / 11 in-container)
 

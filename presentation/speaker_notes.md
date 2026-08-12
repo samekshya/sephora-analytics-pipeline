@@ -69,7 +69,7 @@ collapse. Skin-profile differences are small and labelled as weak signals.
 ## Slide 8 — Close and live-demo path (0:35)
 
 The final state is 1,093,371 fact rows, zero orphan keys, zero duplicate fact
-keys, 51 passing host tests, and 11 passing in-container DAG assertions. For a
+keys, 49 passing host tests, and 11 passing in-container DAG assertions. For a
 live demo: show the successful incremental run, open the Streamlit overview,
-move one SQL-backed control on Deep dive, and finish with the validation query
+move the SQL-backed review floor, and finish with the validation query
 that reconciles every full-population view to the fact table.

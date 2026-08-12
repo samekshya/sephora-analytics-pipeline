@@ -44,7 +44,8 @@ def _dw_connection():
     password=os.getenv("DW_DB_PASSWORD"))
 
 
-def _run(page=None):
+def _run():
+  """Render the single page. There is no page selector any more (D25)."""
   at = AppTest.from_file(APP, default_timeout=TIMEOUT)
   at.run()
 
@@ -52,19 +53,24 @@ def _run(page=None):
     pytest.fail(f"app raised on first render: {[e.value for e in at.exception]}")
 
   # The app st.stop()s with an st.error if the warehouse is unreachable.
-  if at.error:
-    pytest.skip(f"warehouse unreachable: {[e.value for e in at.error]}")
-
-  if page is not None:
-    at.sidebar.radio[0].set_value(page).run()
-    if at.exception:
-      pytest.fail(f"'{page}' raised: {[e.value for e in at.exception]}")
+  # st.error is also used by the data quality panel for a genuine shortfall, so
+  # match on the connection message rather than on "any error present".
+  unreachable = [e.value for e in at.error if "Cannot reach the warehouse" in e.value]
+  if unreachable:
+    pytest.skip(f"warehouse unreachable: {unreachable}")
 
   return at
 
 
-def test_overview_page_renders():
-  at = _run("Overview")
+def test_the_page_is_a_single_page():
+  """D25: one page, so there must be no page selector left behind."""
+  at = _run()
+  assert not at.sidebar.radio, (
+    "a radio remains in the sidebar — the dashboard is meant to be one page")
+
+
+def test_page_renders_with_kpis():
+  at = _run()
 
   # The KPI row is the one thing every viewer reads first.
   assert len(at.metric) >= 5, "KPI metrics missing"
@@ -73,9 +79,9 @@ def test_overview_page_renders():
   assert "Avg rating" in labels
 
 
-def test_overview_kpi_matches_the_warehouse():
+def test_kpis_match_the_warehouse():
   """The dashboard must not display a number the warehouse disagrees with."""
-  at = _run("Overview")
+  at = _run()
 
   reviews = next(m for m in at.metric if m.label == "Reviews")
   rating = next(m for m in at.metric if m.label == "Avg rating")
@@ -101,18 +107,18 @@ def test_overview_kpi_matches_the_warehouse():
   assert rating.value == f"{fact_rating:.3f}"
 
 
-def test_deep_dive_page_renders():
-  at = _run("Deep dive")
+def test_all_five_business_questions_are_on_the_one_page():
+  """Every BQ must be reachable without navigating (D25)."""
+  at = _run()
 
-  assert at.dataframe, "hype vs reality tables missing"
   headers = " ".join(h.value for h in at.subheader)
-  assert "BQ3" in headers
-  assert "BQ4" in headers
+  for bq in ("BQ1", "BQ2", "BQ3", "BQ4", "BQ5"):
+    assert bq in headers, f"{bq} is missing from the page"
 
 
 def test_min_reviews_filter_is_live():
   """Changing the floor must re-query, not just re-draw a cached picture."""
-  at = _run("Overview")
+  at = _run()
 
   captions_before = " ".join(c.value for c in at.caption)
   assert "of 304 brands clear" in captions_before
@@ -126,71 +132,8 @@ def test_min_reviews_filter_is_live():
     "the query")
 
 
-# ---------------------------------------------------------------------------
-# The Deep dive sliders
-#
-# Selected by label rather than by index: the sliders are found in render
-# order, so a new control added anywhere above one of these would silently
-# repoint the test at a different widget and it would keep passing.
-# ---------------------------------------------------------------------------
-
-def _slider(at, label_prefix):
-  return next(s for s in at.slider if s.label.startswith(label_prefix))
-
-
-def _caption_containing(at, needle):
-  return next(c.value for c in at.caption if needle in c.value)
-
-
-def test_hype_gap_slider_is_live():
-  """The hype gap must reach the WHERE clause, not filter the frame after."""
-  at = _run("Deep dive")
-
-  before = _caption_containing(at, "clear the current hype-gap threshold")
-
-  _slider(at, "Minimum hype gap").set_value(30).run()
-  assert not at.exception
-
-  after = _caption_containing(at, "clear the current hype-gap threshold")
-  assert after != before, (
-    "raising the hype gap changed nothing — the slider is not a query "
-    "parameter")
-
-
-def test_price_range_slider_is_live():
-  at = _run("Deep dive")
-
-  before = _caption_containing(at, "the OLS trend line is refitted")
-
-  _slider(at, "Price range").set_value((20, 60)).run()
-  assert not at.exception
-
-  after = _caption_containing(at, "the OLS trend line is refitted")
-  assert after != before, "the price range is not reaching the query"
-  assert "between $20 and $60" in after
-
-
-def test_skin_group_floor_is_live():
-  """Dropping the floor to 0 must bring the small, noisy tone groups back."""
-  at = _run("Deep dive")
-
-  before = _caption_containing(at, "skin tone(s) qualify")
-
-  _slider(at, "Minimum reviews per skin group").set_value(0).run()
-  assert not at.exception
-
-  after = _caption_containing(at, "skin tone(s) qualify")
-  assert after != before, (
-    "the skin-group floor is not wired to HAVING — it was hardcoded at 1000 "
-    "before this control existed, and a silent regression would look "
-    "identical")
-
-
-def test_review_length_section_renders():
-  at = _run("Deep dive")
-
-  headings = " ".join(h.value for h in at.subheader)
-  assert "review length" in headings
+def test_review_length_finding_is_stated():
+  at = _run()
 
   captions = " ".join(c.value for c in at.caption)
   assert "This data does not support it" in captions, (
@@ -231,7 +174,7 @@ def test_review_length_view_reconciles_to_the_fact_table():
 
 
 def test_data_quality_panel_reports_the_row_accounting():
-  at = _run("Overview")
+  at = _run()
 
   labels = {m.label: m.value for m in at.metric}
   assert labels.get("Orphan fact rows") == "0"

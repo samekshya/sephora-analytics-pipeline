@@ -1,7 +1,7 @@
 """
 app.py
 ------
-Streamlit dashboard over sephora_dw. Two pages, five business questions.
+Streamlit dashboard over sephora_dw. ONE page, five business questions.
 
 LIVE connection, not a static export. Every number on screen is fetched from
 Postgres when the page renders, so running the incremental DAG during the demo
@@ -13,16 +13,26 @@ exists. The reason is single-source-of-truth: the same SQL backs the dashboard
 and sql/validation/dashboard_checks.sql, so if the two ever disagree it is a
 bug in one of them rather than two independent definitions that drifted.
 
+Design notes (D18, D23, D25):
+  - One page, read top to bottom. Every block states its finding in words
+    directly under the heading, so the page is legible without reading a chart.
+  - Every chart sits in a bordered card with the title OUTSIDE the plot, so
+    Plotly never has to reserve space for a title and no text can collide.
+  - Exactly one control (a review floor) plus Refresh. See D25.
+  - The palette is Sephora black / white / red and was validated rather than
+    eyeballed: categorical red+blue clear CVD dE 16.1 and normal-vision 29.1,
+    and the five-step price ramp is monotone in lightness on a single hue.
+
 Run:
     py -m streamlit run dashboard/app.py
 """
 
-import math
 import os
 
 import pandas as pd
-import plotly.express as px
+import plotly.graph_objects as go
 import psycopg2
+from plotly.subplots import make_subplots
 import streamlit as st
 from dotenv import load_dotenv
 
@@ -62,11 +72,78 @@ OLTP_CONFIG = dict(
   password=os.getenv("OLTP_DB_PASSWORD"),
 )
 
-# Colour-blind safe. The rating scale is sequential (more is better) and the
-# hype scale is diverging (zero is meaningful in both directions) - using one
-# palette for both would imply they mean the same thing.
-SEQ = "Viridis"
-DIV = "RdBu_r"
+# --------------------------------------------------------------------------
+# Sephora palette
+#
+# Black, white and the brand red — the colours of the striped bag. Every value
+# below was run through the data-viz validator against the #151515 card surface
+# rather than picked by eye:
+#
+#   categorical RED + BLUE  worst pair CVD dE 16.1 (protan), normal 29.1, both
+#                           inside the dark lightness band, both >= 3:1
+#   ordinal RED ramp        monotone light->dark, single hue (11 deg spread),
+#                           light end 2.47:1 against the surface
+#
+# Only TWO categorical slots exist on purpose. The page never plots more than
+# two series at once, and a third warm hue (gold) failed deuteranope separation
+# against the brand red at dE 4.2 — so it was cut rather than shipped.
+# --------------------------------------------------------------------------
+
+PAGE_BG = "#0A0A0A"     # Sephora black
+SURFACE = "#151515"     # chart card
+INK = "#FFFFFF"
+INK_2 = "#C7C4BE"
+MUTED = "#8E8B85"       # axis ticks and labels
+GRID = "#262626"        # hairline gridline, one shade off the surface
+BASELINE = "#3A3A38"
+BORDER = "rgba(255,255,255,0.10)"
+
+RED = "#F5405F"         # categorical slot 1 / brand accent
+BLUE = "#5589C7"        # categorical slot 2
+MIDPOINT = "#8A8781"    # diverging midpoint — neutral, but still visible
+
+# Ordered categories only (the five price bands). Never used on nominal ones.
+RED_RAMP = ["#F7A8B8", "#F5768C", "#F5405F", "#D42248", "#A81736"]
+
+FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif'
+
+CSS = f"""
+<style>
+  .stApp {{ background: {PAGE_BG}; }}
+  section[data-testid="stSidebar"] {{
+    background: #101010;
+    border-right: 1px solid {BORDER};
+  }}
+  /* Chart cards and the KPI strip */
+  div[data-testid="stVerticalBlockBorderWrapper"] {{
+    background: {SURFACE};
+    border: 1px solid {BORDER} !important;
+    border-radius: 10px;
+  }}
+  div[data-testid="stMetricValue"] {{
+    font-size: 1.75rem; color: {INK}; font-weight: 600;
+  }}
+  div[data-testid="stMetricLabel"] {{
+    color: {MUTED}; text-transform: uppercase; letter-spacing: .06em;
+    font-size: .72rem;
+  }}
+  h1, h2, h3 {{ color: {INK}; letter-spacing: -0.01em; }}
+  /* The red rule under every section heading — the one brand flourish */
+  .rule {{
+    height: 3px; width: 56px; background: {RED};
+    border-radius: 2px; margin: 0 0 .6rem 0;
+  }}
+  .chart-title {{
+    color: {INK}; font-size: 1rem; font-weight: 600; margin: 0 0 .15rem 0;
+  }}
+  .chart-sub {{ color: {MUTED}; font-size: .82rem; margin: 0 0 .5rem 0; }}
+  .finding {{
+    color: {INK_2}; font-size: 1rem; line-height: 1.55; margin: 0 0 .4rem 0;
+  }}
+  .finding b {{ color: {INK}; }}
+</style>
+"""
+st.markdown(CSS, unsafe_allow_html=True)
 
 
 # --------------------------------------------------------------------------
@@ -87,9 +164,9 @@ def get_connection():
 def q(sql: str, params: tuple = None) -> pd.DataFrame:
   """Run a query and cache the RESULT for 5 minutes.
 
-  The TTL is what makes 'live' honest: filter changes are instant, but the
-  numbers cannot silently go stale for longer than 5 minutes, and the sidebar
-  Refresh button clears the cache outright for a demo.
+  The TTL is what makes 'live' honest: the numbers cannot silently go stale for
+  longer than 5 minutes, and the sidebar Refresh button clears the cache
+  outright for a demo.
   """
   conn = get_connection()
   try:
@@ -121,128 +198,651 @@ def q_oltp(sql: str, params: tuple = None) -> pd.DataFrame:
     conn.close()
 
 
-def kpi_row():
-  return q("SELECT * FROM dw.vw_kpi_summary").iloc[0]
-
-
 # --------------------------------------------------------------------------
-# Live warehouse status
+# Chart chrome
+#
+# One styling function for every figure, so no chart can drift into its own
+# type sizes or margins. Titles live in HTML ABOVE the plot rather than in the
+# figure: Plotly titles overlap legends at narrow widths, and an HTML heading
+# cannot collide with anything inside the SVG.
 # --------------------------------------------------------------------------
 
-def live_status_strip(k):
-  """Show the warehouse watermark and row count, with a delta across refreshes.
+def style(fig, height=320, legend=False, xlab="", ylab="", ygrid=True):
+  fig.update_layout(
+    height=height,
+    paper_bgcolor=SURFACE,
+    plot_bgcolor=SURFACE,
+    font=dict(family=FONT, size=13, color=INK_2),
+    margin=dict(l=4, r=18, t=8 if not legend else 34, b=4),
+    showlegend=legend,
+    legend=dict(
+      orientation="h", yanchor="bottom", y=1.0, xanchor="left", x=0,
+      bgcolor="rgba(0,0,0,0)", borderwidth=0,
+      font=dict(size=12, color=INK_2), title_text="",
+    ),
+    hoverlabel=dict(
+      bgcolor="#1F1F1F", bordercolor=BORDER, font_size=12,
+      font_family=FONT, font_color=INK,
+    ),
+    bargap=0.28,
+  )
+  # automargin is what guarantees "text fully visible": Plotly grows the margin
+  # to fit the longest tick label instead of clipping it.
+  fig.update_xaxes(
+    title=dict(text=xlab, font=dict(size=12, color=MUTED), standoff=8),
+    tickfont=dict(size=12, color=MUTED),
+    showgrid=False, zeroline=False,
+    linecolor=BASELINE, linewidth=1, ticks="outside",
+    tickcolor=BASELINE, ticklen=4, automargin=True,
+  )
+  fig.update_yaxes(
+    title=dict(text=ylab, font=dict(size=12, color=MUTED), standoff=8),
+    tickfont=dict(size=12, color=MUTED),
+    showgrid=ygrid, gridcolor=GRID, gridwidth=1, zeroline=False,
+    showline=False, ticks="", automargin=True,
+  )
+  return fig
 
-  Reads the SAME vw_kpi_summary row the KPI metrics above it use — deliberately
-  not a second `SELECT max(submission_date) FROM dw.fact_reviews`, which would be
-  a query path that could disagree with the view under caching.
 
-  The delta is the point of the demo: load `historical` mode, trigger the
-  incremental DAG, click Refresh, and the count visibly jumps. The baseline is
-  frozen by the Refresh button (see sidebar_filters), NOT updated on every
-  render — otherwise moving any slider would silently reset the comparison and
-  the jump would never be visible.
+def card(title: str, subtitle: str = ""):
+  """A bordered chart card. Returns the container to draw the figure into."""
+  box = st.container(border=True)
+  with box:
+    st.markdown(f"<p class='chart-title'>{title}</p>", unsafe_allow_html=True)
+    if subtitle:
+      st.markdown(f"<p class='chart-sub'>{subtitle}</p>", unsafe_allow_html=True)
+  return box
+
+
+def show(box, fig):
+  with box:
+    st.plotly_chart(fig, use_container_width=True,
+                    config={"displayModeBar": False})
+
+
+def section(heading: str, finding: str):
+  """Heading, red rule, and the finding in plain words.
+
+  The finding is stated as text on purpose. A reader who never looks at a chart
+  should still leave the page knowing what the data said.
   """
-  current = int(k["total_reviews"])
-  baseline = st.session_state.get("reviews_baseline")
+  st.markdown("<div style='height:.6rem'></div>", unsafe_allow_html=True)
+  st.subheader(heading)
+  st.markdown("<div class='rule'></div>", unsafe_allow_html=True)
+  st.markdown(f"<p class='finding'>{finding}</p>", unsafe_allow_html=True)
 
-  # Recorded for the Refresh button to pick up on the NEXT rerun. Session state
-  # survives reruns, so at click time this still holds what was last displayed.
-  st.session_state["reviews_current"] = current
 
-  delta = None
-  if baseline is not None and current != baseline:
-    delta = f"{current - baseline:+,} since last refresh"
+# --------------------------------------------------------------------------
+# Header and KPIs
+# --------------------------------------------------------------------------
 
-  with st.container(border=True):
-    c1, c2, c3 = st.columns([1, 1, 2])
-    c1.metric("Warehouse watermark", str(k["latest_review"]))
-    c2.metric("Rows in fact_reviews", f"{current:,}", delta=delta)
-    with c3:
-      st.markdown("**Live connection — not an export**")
-      st.caption(
-        "Run the Airflow DAG in incremental mode, then click **Refresh data** "
-        "in the sidebar — this number moves live. The watermark is "
-        "`max(submission_date)`, which is also what the pipeline reads to decide "
-        "where the next incremental load starts."
-      )
+def header_and_kpis():
+  st.title("Sephora Skincare Reviews")
+  st.markdown(
+    f"<p class='finding'>"
+    f"<b>1.09 million reviews — what people actually rate well, as opposed to "
+    f"what they merely want.</b></p>",
+    unsafe_allow_html=True)
 
+  k = q("SELECT * FROM dw.vw_kpi_summary").iloc[0]
+
+  box = st.container(border=True)
+  with box:
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.metric("Reviews", f"{k['total_reviews']:,}")
+    c2.metric("Reviewers", f"{k['total_reviewers']:,}")
+    c3.metric("Avg rating", f"{k['avg_rating']:.3f}")
+    c4.metric("Recommend", f"{k['recommend_pct']:.1f}%")
+    # Coverage rather than the catalogue count alone: only 2,351 of 8,494
+    # products have any reviews, and a bare "8,494" would imply a coverage this
+    # data does not have.
+    c5.metric("Products reviewed",
+              f"{k['products_reviewed']:,} / {k['products_in_catalogue']:,}")
+
+    current = int(k["total_reviews"])
+    baseline = st.session_state.get("reviews_baseline")
+    # Recorded for the Refresh button to pick up on the NEXT rerun.
+    st.session_state["reviews_current"] = current
+    delta = (f"  ·  **{current - baseline:+,}** since last refresh"
+             if baseline is not None and current != baseline else "")
+
+    st.caption(
+      f"Live from `sephora_dw` · {k['earliest_review']} → {k['latest_review']} "
+      f"· warehouse watermark **{k['latest_review']}**{delta}. Helpfulness is "
+      f"averaged only over the {k['reviews_with_feedback']:,} reviews that "
+      f"actually received a vote — it is undefined, not zero, elsewhere (D5)."
+    )
+  return k
+
+
+# --------------------------------------------------------------------------
+# BQ5 — trend over time
+# --------------------------------------------------------------------------
+
+def bq5_trend():
+  trend = q("""
+    SELECT month_start, review_count, avg_rating, rolling_3m_avg_rating,
+           is_partial_month
+    FROM dw.vw_review_volume_by_month
+    ORDER BY month_start
+  """)
+  if trend.empty:
+    st.info("No review history in the warehouse yet.")
+    return
+
+  peak = trend.loc[trend["review_count"].idxmax()]
+  low = trend.loc[trend["avg_rating"].idxmin()]
+
+  section(
+    "BQ5 · How do review volume and rating trend over time?",
+    f"Volume grew for twelve years to a peak of <b>{int(peak['review_count']):,} "
+    f"reviews</b> in {peak['month_start']:%B %Y}, then eased. Average rating "
+    f"sagged to <b>{low['avg_rating']:.2f}</b> around {low['month_start']:%Y} "
+    f"and has recovered since — the dip is real, but it is four hundredths of "
+    f"a star deep.")
+
+  left, right = st.columns(2)
+
+  with left:
+    # Data ends 21 March 2023, so the last bar is a part-month and would
+    # otherwise read as a collapse in demand. It is greyed rather than
+    # annotated: a floating "partial month" label had to sit somewhere among
+    # 20k-tall bars, and there is no position at the right-hand edge where it
+    # does not risk touching one.
+    partial = trend["is_partial_month"].astype(bool)
+    box = card(
+      "Review volume by month",
+      "Monthly counts. The final bar is <span style='color:%s'>grey</span> "
+      "because March 2023 is a partial month — the data ends on the 21st."
+      % MUTED)
+    fig = go.Figure(go.Bar(
+      x=trend["month_start"], y=trend["review_count"],
+      marker_color=[MUTED if p else RED for p in partial],
+      marker_line_width=0,
+      customdata=partial.map({True: " (partial)", False: ""}),
+      hovertemplate="%{x|%b %Y}%{customdata}<br>%{y:,} reviews<extra></extra>",
+    ))
+    style(fig, height=330, ylab="Reviews")
+    show(box, fig)
+
+  with right:
+    box = card("Average rating: monthly vs 3-month rolling",
+               "The rolling line is a SQL window function, not chart smoothing.")
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+      x=trend["month_start"], y=trend["avg_rating"], name="Monthly",
+      mode="lines", line=dict(color=BLUE, width=1.4),
+      hovertemplate="%{x|%b %Y}<br>%{y:.3f}<extra>Monthly</extra>",
+    ))
+    fig.add_trace(go.Scatter(
+      x=trend["month_start"], y=trend["rolling_3m_avg_rating"],
+      name="3-month rolling", mode="lines",
+      line=dict(color=RED, width=2.5),
+      hovertemplate="%{x|%b %Y}<br>%{y:.3f}<extra>3-month rolling</extra>",
+    ))
+    style(fig, height=330, legend=True, ylab="Avg rating")
+    show(box, fig)
+
+  st.caption(
+    "Monthly averages are noisy in the early years when volume was low, which "
+    "is why the rolling line exists. Both come from "
+    "`vw_review_volume_by_month`, so the same numbers appear in "
+    "`sql/validation/dashboard_checks.sql`."
+  )
+
+
+# --------------------------------------------------------------------------
+# BQ1 — brands and categories
+# --------------------------------------------------------------------------
+
+def bq1_brands(min_reviews, overall_rating):
+  brands = q("""
+    SELECT brand_name, review_count, avg_rating, recommend_pct
+    FROM dw.vw_rating_by_brand
+    WHERE review_count >= %s
+    ORDER BY avg_rating DESC
+  """, (int(min_reviews),))
+
+  if brands.empty:
+    section("BQ1 · Which brands rate best, and which underperform?",
+            "No brand clears the current review floor.")
+    st.info(f"No brand has at least {min_reviews:,} reviews. Lower the floor.")
+    return
+
+  top, bottom = brands.head(10), brands.tail(10)
+  spread = float(top.iloc[0]["avg_rating"] - bottom.iloc[-1]["avg_rating"])
+
+  section(
+    "BQ1 · Which brands rate best, and which underperform?",
+    f"<b>{top.iloc[0]['brand_name']}</b> at {top.iloc[0]['avg_rating']:.2f} to "
+    f"<b>{bottom.iloc[-1]['brand_name']}</b> at "
+    f"{bottom.iloc[-1]['avg_rating']:.2f} — a spread of <b>{spread:.2f} stars</b>. "
+    f"That is far larger than any other effect on this page: brand matters more "
+    f"than category, price, or who is doing the rating.")
+
+  # Deviation from the overall mean, not raw rating. Anchoring on 4.299 is what
+  # makes "underperform" mean something — every bar is read against the average
+  # a shopper actually experiences, and the diverging colour carries the sign.
+  ranked = pd.concat([top, bottom]).drop_duplicates(subset="brand_name")
+  ranked = ranked.assign(delta=ranked["avg_rating"] - overall_rating)
+  ranked = ranked.sort_values("delta")
+
+  box = card(
+    f"Brands against the {overall_rating:.3f} overall average",
+    f"Top and bottom 10 of the {len(brands)} brands with at least "
+    f"{int(min_reviews):,} reviews. Bars run left of the line for below "
+    f"average, right for above.")
+  fig = go.Figure(go.Bar(
+    x=ranked["delta"], y=ranked["brand_name"], orientation="h",
+    marker_color=[RED if d >= 0 else BLUE for d in ranked["delta"]],
+    marker_line_width=0,
+    customdata=ranked[["avg_rating", "review_count"]],
+    hovertemplate=("<b>%{y}</b><br>%{customdata[0]:.3f} avg"
+                   "<br>%{customdata[1]:,} reviews<extra></extra>"),
+  ))
+  fig.add_vline(x=0, line_width=1, line_color=BASELINE)
+  # 20 horizontal bars need real estate; automargin handles the brand names.
+  style(fig, height=620, xlab="Rating minus the overall average", ygrid=False)
+  fig.update_xaxes(showgrid=True, gridcolor=GRID, ticksuffix="")
+  show(box, fig)
+
+  st.caption(
+    f"{len(brands)} of 304 brands clear the {int(min_reviews):,}-review floor. "
+    "Drop the floor and the top of this chart becomes brands with a single "
+    "5-star review — which is exactly why the floor is the one control on this "
+    "page."
+  )
+
+
+def bq1_categories():
+  cats = q("""
+    SELECT secondary_category,
+           sum(review_count)                                            AS reviews,
+           round(sum(avg_rating * review_count) / sum(review_count), 4) AS avg_rating
+    FROM dw.vw_rating_by_category
+    GROUP BY secondary_category
+    ORDER BY avg_rating
+  """)
+  if cats.empty:
+    return
+
+  best, worst = cats.iloc[-1], cats.iloc[0]
+  spread = float(best["avg_rating"] - worst["avg_rating"])
+
+  box = card(
+    "Average rating by category",
+    f"All {len(cats)} secondary categories, ordered. Every reviewed product "
+    f"here is Skincare at the primary level (D16).")
+  # A DOT plot, not bars. The spread is 0.18 of a star, so the axis has to be
+  # truncated to show it at all — and a truncated axis under BARS lies, because
+  # bar length is read from zero. A dot encodes position, so truncating the
+  # axis is honest. Same reason the price and skin-type charts below are dots
+  # and lines rather than bars.
+  fig = go.Figure(go.Scatter(
+    x=cats["avg_rating"], y=cats["secondary_category"],
+    mode="markers",
+    marker=dict(size=12, color=RED, line=dict(width=2, color=SURFACE)),
+    customdata=cats[["reviews"]],
+    hovertemplate=("<b>%{y}</b><br>%{x:.3f} avg"
+                   "<br>%{customdata[0]:,} reviews<extra></extra>"),
+  ))
+  fig.update_xaxes(range=[float(cats["avg_rating"].min()) - 0.03,
+                          float(cats["avg_rating"].max()) + 0.03])
+  style(fig, height=380, xlab="Avg rating", ygrid=True)
+  # Horizontal leader lines make each dot's row readable across the width.
+  fig.update_yaxes(showgrid=True, gridcolor=GRID)
+  fig.update_xaxes(showgrid=False)
+  show(box, fig)
+
+  st.caption(
+    f"**{best['secondary_category']}** leads at {best['avg_rating']:.3f} and "
+    f"**{worst['secondary_category']}** trails at {worst['avg_rating']:.3f} — a "
+    f"spread of just **{spread:.3f} of a star**, against more than a full star "
+    f"between brands. Note the truncated x-axis: it has to be truncated for a "
+    f"spread this small to be visible at all."
+  )
+
+
+# --------------------------------------------------------------------------
+# BQ3 — price
+# --------------------------------------------------------------------------
+
+def bq3_price():
+  bands = q("""
+    SELECT price_band, band_order, review_count, product_count,
+           avg_rating, recommend_pct, rating_stddev
+    FROM dw.vw_rating_by_price_band
+    ORDER BY band_order
+  """)
+  if bands.empty:
+    return
+
+  peak = bands.loc[bands["avg_rating"].idxmax()]
+  tightest = bands.loc[bands["rating_stddev"].idxmin()]
+  top_band = bands.iloc[-1]
+
+  # Both statements are computed, not typed. An earlier version of this page
+  # asserted that spread "falls steadily as price rises" — it does not. It
+  # falls to $50-100 and then widens again at $100+, and quoting the monotone
+  # version meant the caption disagreed with the chart beside it.
+  same_band = peak["price_band"] == tightest["price_band"]
+  section(
+    "BQ3 · Does price predict satisfaction?",
+    f"Not linearly. Ratings climb to <b>{peak['avg_rating']:.3f}</b> at "
+    f"<b>{peak['price_band']}</b> and fall back above it — an inverted U. "
+    + (f"Agreement peaks in the <b>same band</b>: rating spread is tightest at "
+       f"{tightest['rating_stddev']:.3f} in {tightest['price_band']}, then "
+       f"widens again to {top_band['rating_stddev']:.3f} above ${100}. So "
+       f"<b>{peak['price_band']} is the sweet spot on both measures</b> — best "
+       f"rated and most agreed upon — and the priciest band regresses on both."
+       if same_band else
+       f"Spread is tightest at {tightest['rating_stddev']:.3f} in "
+       f"{tightest['price_band']}."))
+
+  left, right = st.columns(2)
+
+  with left:
+    box = card("Average rating by price band",
+               "Ordered bands, so the line is meaningful — this is the "
+               "inverted U. Marker shade deepens with price.")
+    # A line across ORDERED bands, not bars. The whole spread is 0.095 of a
+    # star: as bars on a truncated axis, "Under $15" appeared roughly six times
+    # shorter than "$50-100", which is a 2% difference drawn as 600%. Position
+    # encoding makes the truncation honest and shows the shape besides.
+    fig = go.Figure(go.Scatter(
+      x=bands["price_band"], y=bands["avg_rating"],
+      mode="lines+markers", line=dict(color=RED, width=2),
+      marker=dict(size=15, color=RED_RAMP[:len(bands)],
+                  line=dict(width=2, color=SURFACE)),
+      customdata=bands[["review_count"]],
+      hovertemplate=("<b>%{x}</b><br>%{y:.4f} avg"
+                     "<br>%{customdata[0]:,} reviews<extra></extra>"),
+    ))
+    fig.add_annotation(
+      x=peak["price_band"], y=peak["avg_rating"],
+      text=f"peak {peak['avg_rating']:.3f}", showarrow=True, arrowhead=0,
+      arrowwidth=1, arrowcolor=MUTED, ax=0, ay=-30,
+      font=dict(size=11, color=INK),
+    )
+    fig.update_yaxes(range=[float(bands["avg_rating"].min()) - 0.02,
+                            float(bands["avg_rating"].max()) + 0.035])
+    style(fig, height=320, ylab="Avg rating")
+    show(box, fig)
+
+  with right:
+    box = card("Rating spread by price band",
+               "Standard deviation of rating. Lower means more agreement.")
+    fig = go.Figure(go.Scatter(
+      x=bands["price_band"], y=bands["rating_stddev"],
+      mode="lines+markers", line=dict(color=RED, width=2.5),
+      marker=dict(size=9, color=RED, line=dict(width=2, color=SURFACE)),
+      hovertemplate="<b>%{x}</b><br>std dev %{y:.4f}<extra></extra>",
+    ))
+    style(fig, height=320, ylab="Std dev of rating")
+    show(box, fig)
+
+  st.caption(
+    "Both charts use lines rather than bars on purpose. The whole rating "
+    "spread across five bands is about a tenth of a star, so the axis has to "
+    "be truncated to show it — and a truncated axis under bars misleads, "
+    "because bar length is read from zero. A point's position carries the same "
+    "value honestly. Standard deviation is the width of opinion: lower means "
+    "buyers agree more."
+  )
+
+
+# --------------------------------------------------------------------------
+# BQ2 — hype vs reality
+# --------------------------------------------------------------------------
+
+def bq2_hype():
+  hype = q("""
+    SELECT product_name, brand_name, price_usd, loves_count,
+           review_count, avg_rating, hype_gap
+    FROM dw.vw_hype_vs_reality
+    ORDER BY hype_gap DESC
+  """)
+  if hype.empty:
+    return
+
+  worst = hype.iloc[0]
+
+  section(
+    "BQ2 · Hype vs reality — which products are loved more than they deserve?",
+    f"Wanting a product and liking it are different signals. "
+    f"<b>{worst['brand_name']} {worst['product_name']}</b> is the widest gap in "
+    f"the catalogue: <b>{int(worst['loves_count']):,} loves</b> against a "
+    f"<b>{worst['avg_rating']:.2f}</b> rating. `loves_count` is recorded before "
+    f"purchase, the rating after — so the gap between them is marketing "
+    f"working better than the product does.")
+
+  box = card(
+    "Loves (intention) against average rating (satisfaction)",
+    "One dot per product, sized by review count. Red sits further above its "
+    "rating on loves than it deserves; blue is the opposite — better than "
+    "anyone expected.")
+  fig = go.Figure(go.Scatter(
+    x=hype["loves_count"], y=hype["avg_rating"], mode="markers",
+    marker=dict(
+      size=hype["review_count"], sizemode="area",
+      sizeref=2.0 * hype["review_count"].max() / (34.0 ** 2), sizemin=4,
+      color=hype["hype_gap"],
+      # The midpoint must read as "nothing" WITHOUT disappearing. The first
+      # attempt used the #3A3A38 chrome gray and every product near a zero gap
+      # sank into the black surface — the densest part of the cloud became
+      # invisible. This gray is neutral against both poles and still legible on
+      # #151515.
+      colorscale=[[0.0, BLUE], [0.5, MIDPOINT], [1.0, RED]],
+      cmid=0,
+      line=dict(width=1, color=SURFACE),   # 2px surface ring on overlap
+      colorbar=dict(
+        title=dict(text="Hype gap", font=dict(size=11, color=MUTED)),
+        tickfont=dict(size=11, color=MUTED), thickness=10, len=0.7,
+        outlinewidth=0,
+      ),
+    ),
+    customdata=hype[["product_name", "brand_name", "review_count"]],
+    hovertemplate=("<b>%{customdata[1]} %{customdata[0]}</b>"
+                   "<br>%{x:,} loves · %{y:.2f} avg"
+                   "<br>%{customdata[2]:,} reviews<extra></extra>"),
+  ))
+  # Direct-label the three worst offenders only. A label on every dot would be
+  # unreadable, and these three are the whole point of the chart.
+  #
+  # Labelled by PRODUCT, not brand: The Ordinary holds two of the top three, so
+  # brand-only labels printed "The Ordinary" twice on the same chart and told
+  # the reader nothing about which product either dot was.
+  for i, (_, r) in enumerate(hype.head(3).iterrows()):
+    name = r["product_name"]
+    if len(name) > 26:
+      name = name[:25].rstrip() + "…"
+    fig.add_annotation(
+      x=r["loves_count"], y=r["avg_rating"],
+      text=f"{r['brand_name']} · {name}",
+      showarrow=True, arrowhead=0, arrowwidth=1, arrowcolor=MUTED,
+      ax=18, ay=-30 - (i * 4), xanchor="left",
+      font=dict(size=11, color=INK), align="left",
+    )
+  style(fig, height=430, xlab="Loves / wishlist adds", ylab="Avg rating")
+  show(box, fig)
+
+  st.caption(
+    "Both signals are percentile-ranked in SQL, so a cheap moisturizer and a "
+    "$300 serum are comparable. Minimum 50 reviews per product — "
+    f"{len(hype):,} products qualify."
+  )
+
+  with st.expander("The ten most overhyped, and the ten quiet successes"):
+    left, right = st.columns(2)
+    cols = ["product_name", "brand_name", "loves_count", "review_count",
+            "avg_rating"]
+    with left:
+      st.markdown("**Most overhyped** — high loves, low rating")
+      st.dataframe(hype.head(10)[cols], hide_index=True,
+                   use_container_width=True)
+    with right:
+      st.markdown("**Sleeper hits** — better than their love count suggests")
+      st.dataframe(hype.tail(10)[cols].iloc[::-1], hide_index=True,
+                   use_container_width=True)
+
+
+# --------------------------------------------------------------------------
+# BQ4 + review length
+# --------------------------------------------------------------------------
+
+def bq4_and_length():
+  skin = q("""
+    SELECT skin_type,
+           sum(review_count)                                            AS reviews,
+           round(sum(avg_rating * review_count) / sum(review_count), 4) AS avg_rating
+    FROM dw.vw_rating_by_skin_type
+    GROUP BY skin_type
+    HAVING sum(review_count) >= 1000
+    ORDER BY avg_rating DESC
+  """)
+
+  length = q("""
+    SELECT length_bucket, bucket_order, review_count, avg_rating,
+           rating_stddev, pct_1_star, pct_5_star
+    FROM dw.vw_rating_by_review_length
+    ORDER BY bucket_order
+  """)
+  # The Unknown bucket is kept in the view so it reconciles to the fact table,
+  # but it is not a LENGTH — plotting it on an ordered length axis would be a
+  # category error.
+  plotted = length[length["length_bucket"] != "Unknown"]
+
+  skin_spread = (float(skin["avg_rating"].max() - skin["avg_rating"].min())
+                 if not skin.empty else 0.0)
+  short, long_ = plotted.iloc[0], plotted.iloc[-1]
+
+  section(
+    "BQ4 · Does who is reviewing, or how much they write, change the rating?",
+    f"Barely, and both answers are worth stating plainly. Skin type moves the "
+    f"average by <b>{skin_spread:.3f} of a star</b> — real, measurable, and too "
+    f"small to act on. Review length moves it almost not at all, but it hides "
+    f"the better finding: short reviews are <b>polarised</b> and long ones are "
+    f"moderate.")
+
+  left, right = st.columns(2)
+
+  with left:
+    box = card("Average rating by skin type",
+               "Groups with at least 1,000 reviews. Truncated axis — the whole "
+               "spread is four hundredths of a star.")
+    if skin.empty:
+      with box:
+        st.info("No skin type clears the 1,000-review floor.")
+    else:
+      # Dots again, for the same reason as the category and price charts: a
+      # 0.04-star spread needs a truncated axis, and truncating under bars
+      # would draw a 1% difference as a towering one.
+      fig = go.Figure(go.Scatter(
+        x=skin["avg_rating"], y=skin["skin_type"], mode="markers",
+        marker=dict(size=13, color=RED, line=dict(width=2, color=SURFACE)),
+        customdata=skin[["reviews"]],
+        hovertemplate=("<b>%{y}</b><br>%{x:.4f} avg"
+                       "<br>%{customdata[0]:,} reviews<extra></extra>"),
+      ))
+      fig.update_xaxes(range=[float(skin["avg_rating"].min()) - 0.012,
+                              float(skin["avg_rating"].max()) + 0.012])
+      style(fig, height=330, xlab="Avg rating")
+      fig.update_yaxes(showgrid=True, gridcolor=GRID)
+      fig.update_xaxes(showgrid=False)
+      show(box, fig)
+
+  with right:
+    box = card("Share of 1-star and 5-star reviews by length",
+               "Two panels, not two series on one axis — see note below.")
+    # SMALL MULTIPLES, deliberately. The two shares live on wildly different
+    # scales (1-star runs 3-8%, 5-star 61-67%). Grouped on a single axis, the
+    # 5-star bars tower and the 1-star decline — which is half the finding —
+    # renders as a flat strip along the baseline. A second y-axis would be the
+    # usual "fix" and is worse: two arbitrary scales invent a relationship.
+    # Separate panels let each tail be read on its own scale honestly.
+    fig = make_subplots(
+      rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.16,
+      subplot_titles=("1-star share (%)", "5-star share (%)"))
+    fig.add_trace(go.Bar(
+      x=plotted["length_bucket"], y=plotted["pct_1_star"],
+      marker_color=RED, marker_line_width=0, showlegend=False,
+      hovertemplate="<b>%{x}</b><br>%{y:.2f}% are 1 star<extra></extra>",
+    ), row=1, col=1)
+    fig.add_trace(go.Bar(
+      x=plotted["length_bucket"], y=plotted["pct_5_star"],
+      marker_color=BLUE, marker_line_width=0, showlegend=False,
+      hovertemplate="<b>%{x}</b><br>%{y:.2f}% are 5 star<extra></extra>",
+    ), row=2, col=1)
+    style(fig, height=380)
+    # style() budgets no room for subplot titles, so the first one gets clipped
+    # by the top edge. Give it back explicitly.
+    fig.update_layout(margin=dict(l=4, r=18, t=30, b=4))
+    for ann in fig.layout.annotations:
+      ann.font = dict(size=12, color=INK_2)
+      ann.x, ann.xanchor = 0, "left"
+    fig.update_xaxes(tickfont=dict(size=11, color=MUTED))
+    show(box, fig)
+
+  st.caption(
+    "The common assumption is that unhappy customers write longer reviews. "
+    "**This data does not support it.** Going from the shortest bucket to the "
+    f"longest, the 1-star share falls {short['pct_1_star']:.2f}% → "
+    f"{long_['pct_1_star']:.2f}% **and** the 5-star share falls "
+    f"{short['pct_5_star']:.2f}% → {long_['pct_5_star']:.2f}%. Both extremes "
+    "shrink together, so they cancel in the mean — rating standard deviation "
+    f"falls {short['rating_stddev']:.4f} → {long_['rating_stddev']:.4f} across "
+    "the same buckets. Skin profile is the question the junk dimension exists "
+    "for: holding those attributes on `dim_customer` would have mis-tagged "
+    "13.69% of reviews and quietly broken this chart (D2)."
+  )
+
+
+# --------------------------------------------------------------------------
+# Data quality — recomputed at render time, never read from a stored summary
+# --------------------------------------------------------------------------
 
 def data_quality_panel():
-  """Row accounting and integrity, re-derived from the databases at render time.
-
-  The pipeline's rule is that every row entering a stage must leave it either
-  transformed or dropped for a NAMED reason (etl/reconcile.py), and that an
-  unexplained gap raises rather than logging. That guarantee has always been
-  provable in the logs and invisible on the dashboard. This makes it visible.
-
-  Nothing here is stored: reconcile.py logs its counts, it does not persist
-  them, so every figure below is recomputed against the live databases instead
-  of read out of a table that could itself be stale. The one number that cannot
-  be recomputed is called out as such rather than quietly presented as live.
-  """
-  with st.expander("Data quality & what we dropped (and why)"):
-
-    # ---- row accounting, source through warehouse ----------------------
-    st.markdown("**Row accounting — every stage, queried now**")
-
+  with st.expander("Data quality — what was dropped, what was kept, and why"):
     fact = q("""
       SELECT count(*) AS n, max(submission_date) AS watermark
       FROM dw.fact_reviews
     """).iloc[0]
     fact_rows = int(fact["n"])
 
-    # after_watermark is what separates "held back" from "lost". During the
-    # historical baseline the warehouse is deliberately ~49.5k rows behind
-    # staging (D8) — reporting that as a shortfall would be the panel lying at
-    # exactly the moment it is on screen during the demo.
     oltp = q_oltp("""
-      SELECT (SELECT count(*) FROM raw.reviews)    AS raw_reviews,
-             (SELECT count(*) FROM "3nf".review)   AS nf3_review,
-             (SELECT count(*) FROM staging.review) AS staging_review,
+      SELECT (SELECT count(*) FROM raw.reviews)     AS raw_reviews,
+             (SELECT count(*) FROM "3nf".review)    AS nf3_review,
+             (SELECT count(*) FROM staging.review)  AS staging_review,
              (SELECT count(*) FROM staging.review
-               WHERE submission_date > %s)         AS after_watermark
+               WHERE submission_date > %s)          AS after_watermark
     """, (fact["watermark"],))
 
     if oltp is None:
       st.warning(
         f"`{OLTP_CONFIG['dbname']}` is unreachable, so the OLTP half of this "
-        f"table cannot be shown. The warehouse figures below are unaffected."
-      )
-      stages = pd.DataFrame([
-        {"Stage": "dw.fact_reviews", "Rows": fact_rows, "Change": "—",
-         "What happens here": "One row per review. The grain of the star schema."},
-      ])
+        f"panel cannot be shown. The warehouse figures are unaffected.")
+      gap = held_back = None
     else:
       r = oltp.iloc[0]
-      chain = [
-        ("raw.reviews", int(r["raw_reviews"]),
-         "1:1 mirror of the cleaned CSVs, loaded by COPY. No transformation."),
-        ('3nf.review', int(r["nf3_review"]),
-         "Normalised across 9 tables, every foreign key enforced."),
-        ("staging.review", int(r["staging_review"]),
-         "Review text left behind (D6); review_length precomputed."),
-        ("dw.fact_reviews", fact_rows,
-         "One row per review. The grain of the star schema."),
-      ]
-      stages = pd.DataFrame([
-        {"Stage": name, "Rows": rows,
-         "Change": "—" if i == 0 else f"{rows - chain[i - 1][1]:+,}",
-         "What happens here": note}
-        for i, (name, rows, note) in enumerate(chain)
-      ])
-
-    st.dataframe(stages, hide_index=True, use_container_width=True,
-                 column_config={"Rows": st.column_config.NumberColumn(format="%d")})
-
-    # ---- drops by reason ------------------------------------------------
-    st.markdown("**Drops by reason**")
+      st.dataframe(pd.DataFrame([
+        {"Stage": "raw.reviews", "Rows": int(r["raw_reviews"]),
+         "What happens here": "1:1 mirror of the cleaned CSVs, loaded by COPY."},
+        {"Stage": "3nf.review", "Rows": int(r["nf3_review"]),
+         "What happens here": "Normalised across 9 tables, every FK enforced."},
+        {"Stage": "staging.review", "Rows": int(r["staging_review"]),
+         "What happens here": "Review text left behind (D6); length precomputed."},
+        {"Stage": "dw.fact_reviews", "Rows": fact_rows,
+         "What happens here": "One row per review — the grain of the star schema."},
+      ]), hide_index=True, use_container_width=True)
+      gap = int(r["staging_review"]) - fact_rows
+      held_back = int(r["after_watermark"])
 
     reasons = q("""
       SELECT
-        count(*) FILTER (WHERE p.product_key IS NULL)            AS unresolved_product,
-        count(*) FILTER (WHERE c.customer_key IS NULL)           AS unresolved_customer,
-        count(*) FILTER (WHERE rp.reviewer_profile_key IS NULL)  AS unresolved_reviewer_profile,
-        count(*) FILTER (WHERE d.date_key IS NULL)               AS out_of_range_date
+        count(*) FILTER (WHERE p.product_key IS NULL)           AS unresolved_product,
+        count(*) FILTER (WHERE c.customer_key IS NULL)          AS unresolved_customer,
+        count(*) FILTER (WHERE rp.reviewer_profile_key IS NULL) AS unresolved_profile,
+        count(*) FILTER (WHERE d.date_key IS NULL)              AS out_of_range_date
       FROM dw.fact_reviews f
       LEFT JOIN dw.dim_product          p  ON p.product_key = f.product_key
       LEFT JOIN dw.dim_customer         c  ON c.customer_key = f.customer_key
@@ -250,126 +850,29 @@ def data_quality_panel():
       LEFT JOIN dw.dim_date             d  ON d.date_key = f.date_key
     """).iloc[0]
 
-    gap = held_back = None
-    if oltp is not None:
-      gap = int(oltp.iloc[0]["staging_review"]) - fact_rows
-      held_back = int(oltp.iloc[0]["after_watermark"])
-
-    st.dataframe(
-      pd.DataFrame([
-        {"Reason": "unresolved_product",
-         "Rows dropped": int(reasons["unresolved_product"]),
-         "Meaning": "review pointed at a product_id absent from dim_product"},
-        {"Reason": "unresolved_customer",
-         "Rows dropped": int(reasons["unresolved_customer"]),
-         "Meaning": "author_id absent from dim_customer"},
-        {"Reason": "unresolved_reviewer_profile",
-         "Rows dropped": int(reasons["unresolved_reviewer_profile"]),
-         "Meaning": "the four skin/eye/hair attributes matched no junk-dimension row"},
-        {"Reason": "out_of_range_date",
-         "Rows dropped": int(reasons["out_of_range_date"]),
-         "Meaning": "submission_date fell outside the generated dim_date range"},
-      ]),
-      hide_index=True, use_container_width=True)
-
-    preamble = ("These are the four named reasons `etl/transform.py` may drop "
-                "a fact row for. ")
-    d19 = ("Had `staging.review` and `dw.fact_reviews` disagreed by even one "
-           "row that no reason accounted for, `reconcile.py` would have raised "
-           "`ReconciliationError` and failed the run rather than loading a "
-           "warehouse that looks complete and isn't (D19).")
-
+    # The distinction that matters: HELD BACK is not LOST. At the historical
+    # baseline the warehouse is legitimately ~49.5k rows behind staging (D8),
+    # and a panel that called that a shortfall would be lying at exactly the
+    # moment it is on screen during the demo.
     if gap is None:
-      st.caption(
-        preamble +
-        "The counts above re-run each check against the loaded warehouse: a "
-        "non-zero would mean a row reached the fact table without a resolvable "
-        "key. " + d19
-      )
+      pass
     elif gap == 0:
-      st.caption(
-        preamble +
-        f"The total is not inferred from them — it is measured: "
-        f"`staging.review` minus `dw.fact_reviews` is **{gap:,}**, so nothing "
-        f"was dropped for any reason, named or otherwise. " + d19
-      )
+      st.success(
+        f"`staging.review` minus `dw.fact_reviews` is **{gap:,}** — nothing was "
+        f"dropped for any reason, named or otherwise.")
     elif gap == held_back:
-      # The historical-baseline state. Not loss, and the panel says which.
-      st.caption(
-        preamble +
-        f"The warehouse is currently **{gap:,} rows behind** `staging.review` "
-        f"— and all {held_back:,} of them are dated after the watermark "
-        f"({fact['watermark']}). They were **not dropped**: this is a "
-        f"`historical` load, which deliberately holds later reviews back so an "
-        f"incremental run has real data to pick up (D8). Run the DAG in "
-        f"`incremental` mode and this gap closes to zero. " + d19
-      )
+      st.info(
+        f"The warehouse is **{gap:,} rows behind** `staging.review`, and all "
+        f"{held_back:,} of them are dated after the watermark "
+        f"({fact['watermark']}). They were **not dropped** — this is a "
+        f"`historical` load, which holds later reviews back so an incremental "
+        f"run has real data to pick up (D8). Run the DAG in `incremental` mode "
+        f"and this closes to zero.")
     else:
-      unexplained = gap - held_back
       st.error(
         f"`staging.review` is **{gap:,} rows** ahead of `dw.fact_reviews`, but "
-        f"only {held_back:,} of those are after the watermark. "
-        f"**{unexplained:,} rows are unaccounted for.** That is the condition "
-        f"`reconcile.py` exists to prevent — treat this warehouse as incomplete "
-        f"until it is explained."
-      )
-
-    # ---- kept, not dropped ----------------------------------------------
-    st.markdown("**Kept, not dropped** — missing values this pipeline refuses "
-                "to invent")
-
-    kept = q("""
-      SELECT
-        count(*) FILTER (WHERE f.total_feedback_count = 0) AS no_feedback,
-        count(*) FILTER (WHERE f.review_length IS NULL)    AS no_length,
-        count(*) FILTER (WHERE f.is_recommended IS NULL)   AS no_recommend,
-        count(*) FILTER (WHERE rp.skin_tone  = 'Unknown')  AS unknown_skin_tone,
-        count(*) FILTER (WHERE rp.skin_type  = 'Unknown')  AS unknown_skin_type,
-        count(*) FILTER (WHERE rp.eye_color  = 'Unknown')  AS unknown_eye_color,
-        count(*) FILTER (WHERE rp.hair_color = 'Unknown')  AS unknown_hair_color
-      FROM dw.fact_reviews f
-      JOIN dw.dim_reviewer_profile rp
-        ON rp.reviewer_profile_key = f.reviewer_profile_key
-    """).iloc[0]
-
-    def _pct(n):
-      return f"{100.0 * int(n) / fact_rows:.1f}%" if fact_rows else "—"
-
-    st.dataframe(
-      pd.DataFrame([
-        {"Value": "helpfulness (no votes cast)", "Rows": int(kept["no_feedback"]),
-         "Share": _pct(kept["no_feedback"]),
-         "Treatment": "Left NULL, never imputed to 0. Undefined, not missing — "
-                      "helpfulness averages filter these out (D5)"},
-        {"Value": "is_recommended not answered", "Rows": int(kept["no_recommend"]),
-         "Share": _pct(kept["no_recommend"]),
-         "Treatment": "Left NULL. The recommend % is the share among those who "
-                      "answered, not of all reviews"},
-        {"Value": "review_length unrecorded", "Rows": int(kept["no_length"]),
-         "Share": _pct(kept["no_length"]),
-         "Treatment": "Own bucket in vw_rating_by_review_length so the view "
-                      "still reconciles"},
-        {"Value": "skin_tone = Unknown", "Rows": int(kept["unknown_skin_tone"]),
-         "Share": _pct(kept["unknown_skin_tone"]),
-         "Treatment": "Kept as a category. 'Declined to say' is a real answer"},
-        {"Value": "skin_type = Unknown", "Rows": int(kept["unknown_skin_type"]),
-         "Share": _pct(kept["unknown_skin_type"]), "Treatment": "As above"},
-        {"Value": "eye_color = Unknown", "Rows": int(kept["unknown_eye_color"]),
-         "Share": _pct(kept["unknown_eye_color"]), "Treatment": "As above"},
-        {"Value": "hair_color = Unknown", "Rows": int(kept["unknown_hair_color"]),
-         "Share": _pct(kept["unknown_hair_color"]), "Treatment": "As above"},
-      ]),
-      hide_index=True, use_container_width=True)
-
-    st.caption(
-      "None of these are dropped and none are filled in. Imputing a skin tone "
-      "would have made the BQ4 charts look better sourced than they are; "
-      "imputing helpfulness to 0 would have dragged the average down with "
-      "reviews nobody ever voted on."
-    )
-
-    # ---- integrity assertions -------------------------------------------
-    st.markdown("**Integrity, re-asserted just now**")
+        f"only {held_back:,} are after the watermark. **{gap - held_back:,} rows "
+        f"are unaccounted for** — treat this warehouse as incomplete.")
 
     dupes = int(q("""
       SELECT count(*) AS n FROM (
@@ -378,17 +881,17 @@ def data_quality_panel():
     """)["n"].iloc[0])
     orphans = int(sum(int(reasons[k]) for k in reasons.index))
 
-    # The same UNION as the reconciliation block of dashboard_checks.sql, run
-    # from the app. Counted rather than hardcoded: a "9 of 9" typed into the
-    # page would keep claiming 9 after someone added a tenth view.
+    # Same UNION as the reconciliation block of dashboard_checks.sql, run from
+    # the app. Counted rather than hardcoded: a "9 of 9" typed into the page
+    # would keep claiming 9 after someone added a tenth view.
     recon = q("""
-      SELECT 'vw_kpi_summary'             AS view_name, total_reviews     AS reviews FROM dw.vw_kpi_summary
-      UNION ALL SELECT 'vw_rating_by_brand',        sum(review_count) FROM dw.vw_rating_by_brand
-      UNION ALL SELECT 'vw_rating_by_category',     sum(review_count) FROM dw.vw_rating_by_category
-      UNION ALL SELECT 'vw_rating_by_price_band',   sum(review_count) FROM dw.vw_rating_by_price_band
-      UNION ALL SELECT 'vw_review_trend_monthly',   sum(review_count) FROM dw.vw_review_trend_monthly
-      UNION ALL SELECT 'vw_review_volume_by_month', sum(review_count) FROM dw.vw_review_volume_by_month
-      UNION ALL SELECT 'vw_rating_by_skin_tone',    sum(review_count) FROM dw.vw_rating_by_skin_tone
+      SELECT 'vw_kpi_summary' AS view_name, total_reviews AS reviews FROM dw.vw_kpi_summary
+      UNION ALL SELECT 'vw_rating_by_brand',         sum(review_count) FROM dw.vw_rating_by_brand
+      UNION ALL SELECT 'vw_rating_by_category',      sum(review_count) FROM dw.vw_rating_by_category
+      UNION ALL SELECT 'vw_rating_by_price_band',    sum(review_count) FROM dw.vw_rating_by_price_band
+      UNION ALL SELECT 'vw_review_trend_monthly',    sum(review_count) FROM dw.vw_review_trend_monthly
+      UNION ALL SELECT 'vw_review_volume_by_month',  sum(review_count) FROM dw.vw_review_volume_by_month
+      UNION ALL SELECT 'vw_rating_by_skin_tone',     sum(review_count) FROM dw.vw_rating_by_skin_tone
       UNION ALL SELECT 'vw_rating_by_review_length', sum(review_count) FROM dw.vw_rating_by_review_length
     """)
     matching = int((recon["reviews"] == fact_rows).sum())
@@ -396,651 +899,74 @@ def data_quality_panel():
     c1, c2, c3 = st.columns(3)
     c1.metric("Orphan fact rows", f"{orphans:,}",
               help="Fact rows whose product / customer / reviewer profile / "
-                   "date key does not resolve. Enforced by foreign keys and "
-                   "checked again here.")
+                   "date key does not resolve.")
     c2.metric("Duplicate idempotency keys", f"{dupes:,}",
               help="UNIQUE(source_row_id, product_id) is what makes re-running "
-                   "the DAG safe (D13). Re-running a load inserts 0 rows "
-                   "rather than doubling the table.")
-    c3.metric("Views reconciling to fact_reviews",
-              f"{matching} of {len(recon)}",
+                   "the DAG safe (D13).")
+    c3.metric("Views reconciling to fact_reviews", f"{matching} of {len(recon)}",
               help="Each full-population view aggregates the same fact rows a "
                    "different way, so summing it back up must return the same "
-                   "total. A shortfall is the classic fan-out join bug, which "
-                   "is invisible in any single chart. Same UNION as "
-                   "sql/validation/dashboard_checks.sql, run just now.")
+                   "total. Same UNION as sql/validation/dashboard_checks.sql.")
 
     st.caption(
-      "**One number on this panel is not live.** `clean.py` removed **1,040** "
-      "duplicate reviews on (author_id, product_id, submission_time) before "
-      "anything reached Postgres — 1,094,411 rows in the source CSVs became "
-      "1,093,371 — so neither database can be queried for it. It is the only "
-      "row loss in the whole chain, it was deliberate (D4), and it is stated "
-      "here rather than left out because the point of this panel is what "
-      "happened to every row, not only the parts that are convenient to query."
+      "**One number here is not live.** `clean.py` removed **1,040** duplicate "
+      "reviews on (author_id, product_id, submission_time) before anything "
+      "reached Postgres — 1,094,411 source rows became 1,093,371 — so neither "
+      "database can be queried for it. It is the only row loss in the whole "
+      "chain, it was deliberate (D4), and it is stated here rather than left "
+      "out because the point of this panel is what happened to every row."
     )
 
 
 # --------------------------------------------------------------------------
-# Presentation
+# Sidebar — one control, deliberately (D25)
 # --------------------------------------------------------------------------
 
-# One line, plain language, no jargon. Someone who has never seen this project
-# should be able to read the top of the page and know what question is being
-# answered before they look at a single chart.
-STRAPLINE = (
-  "**1.09 million Sephora skincare reviews — what people actually rate well, "
-  "as opposed to what they merely want.**"
-)
-
-
-def page_header(title: str, intro: str):
-  """Title block used by both pages, so they open the same way."""
-  st.title(title)
-  st.markdown(STRAPLINE)
-  st.caption(intro)
-  st.divider()
-
-
-def section(heading: str, takeaway: str):
-  """A section heading and the one line a reader should leave it with.
-
-  Every section gets the same shape - heading, then what it is for - so the
-  page reads consistently instead of some questions being introduced and
-  others appearing as a bare chart.
-  """
-  st.subheader(heading)
-  st.markdown(f"*{takeaway}*")
-
-
-# --------------------------------------------------------------------------
-# Sidebar — the interactive filters
-# --------------------------------------------------------------------------
-
-def sidebar_filters():
-  st.sidebar.title("Filters")
-  st.sidebar.caption(
-    "These are real query parameters — every chart below re-queries Postgres "
-    "when you change them."
-  )
-
-  categories = q("""
-    SELECT DISTINCT secondary_category
-    FROM dw.dim_product
-    WHERE secondary_category IS NOT NULL
-      AND product_key IN (SELECT DISTINCT product_key FROM dw.fact_reviews)
-    ORDER BY 1
-  """)["secondary_category"].tolist()
-
-  selected_categories = st.sidebar.multiselect(
-    "Category (secondary)",
-    options=categories,
-    default=categories,
-    help="Primary category is always 'Skincare' in this dataset (D16), so "
-         "secondary is the level that actually varies.",
-  )
-
-  bounds = q("""
-    SELECT min(submission_date) AS lo, max(submission_date) AS hi
-    FROM dw.fact_reviews
-  """).iloc[0]
-
-  date_range = st.sidebar.slider(
-    "Review date range",
-    min_value=bounds["lo"],
-    max_value=bounds["hi"],
-    value=(bounds["lo"], bounds["hi"]),
-    format="YYYY-MM",
-  )
+def sidebar():
+  st.sidebar.markdown("### Sephora Reviews")
+  st.sidebar.caption("Live analytics over `sephora_dw`.")
+  st.sidebar.divider()
 
   min_reviews = st.sidebar.number_input(
-    "Minimum reviews per brand/product",
+    "Minimum reviews per brand",
     min_value=1, max_value=5000, value=500, step=50,
-    help="Without a floor, a 'top brand' list is just brands with one 5-star "
-         "review. This is the single most important control on the page.",
+    help="A review floor is not decoration: without one, the best-rated brand "
+         "is whichever has a single 5-star review. This binds into the SQL as "
+         "WHERE review_count >= n, so the chart re-queries when you change it.",
   )
 
   st.sidebar.divider()
-  if st.sidebar.button("Refresh data", use_container_width=True):
-    # Freeze whatever is currently on screen as the comparison point BEFORE
-    # clearing the cache, so the status strip can show how far the warehouse
-    # moved while the DAG was running.
+  if st.sidebar.button("Refresh data", use_container_width=True, type="primary"):
+    # Freeze what is currently on screen as the comparison point BEFORE
+    # clearing the cache, so the KPI strip can show how far the warehouse moved
+    # while the DAG was running.
     st.session_state["reviews_baseline"] = st.session_state.get("reviews_current")
     st.cache_data.clear()
     st.rerun()
-
   st.sidebar.caption(
-    "Click Refresh after running the Airflow DAG to see new rows appear."
+    "Run the Airflow DAG in `incremental` mode, then click Refresh — the review "
+    "count moves live."
   )
 
   st.sidebar.divider()
   with st.sidebar.expander("How to read this"):
     st.markdown(
-      "- **Truncated y-axes are deliberate and always labelled.** Most effects "
-      "in this data are a tenth of a star or less. A zero-based axis would "
-      "render them as identical bars and hide the finding; the caption under "
-      "every truncated chart says the spread it is showing.\n"
-      "- **Review floors matter more than they look.** Averages over small "
-      "groups are noise. Where a floor applies there is a control for it, so "
-      "you can watch the noise drop out instead of taking the floor on trust.\n"
+      "- **Truncated axes are deliberate and always labelled.** Most effects "
+      "here are a tenth of a star or less; a zero-based axis would render them "
+      "as identical bars and hide the finding.\n"
       "- **`Unknown` is a category, not a gap.** It means the reviewer declined "
-      "to answer. Filtering it out would overstate how much this data knows.\n"
-      "- **Every number is queried live from `sephora_dw`** and reproducible "
-      "with `sql/validation/dashboard_checks.sql`. If they disagree, this "
+      "to answer.\n"
+      "- **Red and blue are the only two series colours**, chosen so they stay "
+      "distinguishable under colour-vision deficiency.\n"
+      "- **Every number is queried live** and reproducible with "
+      "`sql/validation/dashboard_checks.sql`. If the two disagree, this "
       "dashboard is wrong."
     )
-
-  return selected_categories, date_range, min_reviews
-
-
-# --------------------------------------------------------------------------
-# Page 1 — Overview
-# --------------------------------------------------------------------------
-
-def page_overview(categories, date_range, min_reviews):
-  page_header(
-    "Sephora Skincare Reviews — Overview",
-    "Where the ratings sit overall, how they have moved over fifteen years, and "
-    "which brands and categories sit at each end. Deep dive has the harder "
-    "questions: hype, price and who is doing the rating.",
-  )
-
-  k = kpi_row()
-  c1, c2, c3, c4, c5 = st.columns(5)
-  c1.metric("Reviews", f"{k['total_reviews']:,}")
-  c2.metric("Reviewers", f"{k['total_reviewers']:,}")
-  c3.metric("Avg rating", f"{k['avg_rating']:.3f}")
-  c4.metric("Recommend", f"{k['recommend_pct']:.1f}%")
-  # Deliberately shows coverage rather than the catalogue count alone: only
-  # 2,351 of 8,494 products have any reviews, and a bare "8,494" would imply
-  # a coverage this data does not have.
-  c5.metric("Products reviewed",
-            f"{k['products_reviewed']:,} / {k['products_in_catalogue']:,}")
-
-  st.caption(
-    f"Data range {k['earliest_review']} → {k['latest_review']}. "
-    f"Helpfulness averaged only over the {k['reviews_with_feedback']:,} reviews "
-    f"that actually received a vote — it is undefined, not zero, elsewhere (D5)."
-  )
-
-  live_status_strip(k)
-  data_quality_panel()
-
-  st.divider()
-
-  # ---- BQ5: volume over time -------------------------------------------
-  section("BQ5 — How do review volume and rating trend over time?",
-          "Volume grew for twelve years then eased; the average rating dipped "
-          "in 2020 and recovered.")
-
-  trend = q("""
-    SELECT month_start, review_count, avg_rating, rolling_3m_avg_rating,
-           cumulative_avg_rating, is_partial_month
-    FROM dw.vw_review_volume_by_month
-    WHERE month_start BETWEEN %s AND %s
-    ORDER BY month_start
-  """, (date_range[0], date_range[1]))
-
-  if trend.empty:
-    st.info("No reviews in the selected range.")
-  else:
-    left, right = st.columns([3, 2])
-
-    with left:
-      fig = px.bar(trend, x="month_start", y="review_count",
-                   title="Review volume by month",
-                   labels={"month_start": "", "review_count": "Reviews"})
-      # The final month is partial (data ends 21 March 2023). Flagging it stops
-      # the drop being read as a collapse in demand.
-      if bool(trend.iloc[-1]["is_partial_month"]):
-        fig.add_annotation(
-          x=trend.iloc[-1]["month_start"], y=trend.iloc[-1]["review_count"],
-          text="partial month", showarrow=True, arrowhead=2, yshift=10)
-      st.plotly_chart(fig, use_container_width=True)
-
-    with right:
-      melted = trend.melt(
-        id_vars="month_start",
-        value_vars=["avg_rating", "rolling_3m_avg_rating",
-                    "cumulative_avg_rating"],
-        var_name="series", value_name="rating")
-      fig = px.line(melted, x="month_start", y="rating", color="series",
-                    title="Average rating: monthly vs smoothed",
-                    labels={"month_start": "", "rating": "Avg rating"})
-      st.plotly_chart(fig, use_container_width=True)
-
-    st.caption(
-      "Monthly averages are noisy in the early years when volume was low. The "
-      "rolling 3-month and cumulative lines are SQL window functions in "
-      "`vw_review_volume_by_month`, not chart smoothing — the same numbers "
-      "appear in the validation script."
-    )
-
-  st.divider()
-
-  # ---- BQ1: brands ------------------------------------------------------
-  section("BQ1 — Which brands earn the highest ratings, and which underperform?",
-          "The gap between best and worst is over a full star — far larger than "
-          "any other effect on this dashboard.")
-
-  brands = q("""
-    SELECT brand_name, review_count, avg_rating, recommend_pct, avg_price_usd
-    FROM dw.vw_rating_by_brand
-    WHERE review_count >= %s
-    ORDER BY avg_rating DESC
-  """, (int(min_reviews),))
-
-  if brands.empty:
-    st.info(f"No brand has at least {min_reviews:,} reviews. Lower the filter.")
-  else:
-    top = brands.head(10).iloc[::-1]
-    bottom = brands.tail(10)
-
-    left, right = st.columns(2)
-    with left:
-      fig = px.bar(top, x="avg_rating", y="brand_name", orientation="h",
-                   color="avg_rating", color_continuous_scale=SEQ,
-                   title=f"Best-rated brands (min {min_reviews:,} reviews)",
-                   labels={"avg_rating": "Avg rating", "brand_name": ""})
-      fig.update_layout(coloraxis_showscale=False)
-      st.plotly_chart(fig, use_container_width=True)
-    with right:
-      fig = px.bar(bottom, x="avg_rating", y="brand_name", orientation="h",
-                   color="avg_rating", color_continuous_scale=SEQ,
-                   title=f"Worst-rated brands (min {min_reviews:,} reviews)",
-                   labels={"avg_rating": "Avg rating", "brand_name": ""})
-      fig.update_layout(coloraxis_showscale=False)
-      st.plotly_chart(fig, use_container_width=True)
-
-    st.caption(
-      f"{len(brands)} of 304 brands clear the {min_reviews:,}-review floor. "
-      "Drop the floor to 1 and the top of this chart becomes brands with a "
-      "single 5-star review — which is why the control exists."
-    )
-
-  st.divider()
-
-  # ---- BQ1b: categories -------------------------------------------------
-  section("BQ1b — Which categories rate best?",
-          "Cleansers lead, sunscreen trails, and the whole spread is under two "
-          "tenths of a star — category matters far less than brand.")
-
-  cats = q("""
-    SELECT secondary_category,
-           sum(review_count)                                           AS reviews,
-           round(sum(avg_rating * review_count) / sum(review_count), 4) AS avg_rating
-    FROM dw.vw_rating_by_category
-    WHERE secondary_category = ANY(%s)
-    GROUP BY secondary_category
-    ORDER BY reviews DESC
-  """, (categories,))
-
-  if cats.empty:
-    st.info("Select at least one category in the sidebar.")
-  else:
-    fig = px.scatter(cats, x="reviews", y="avg_rating", size="reviews",
-                     color="avg_rating", color_continuous_scale=SEQ,
-                     text="secondary_category",
-                     title="Category volume vs average rating",
-                     labels={"reviews": "Reviews", "avg_rating": "Avg rating"})
-    fig.update_traces(textposition="top center")
-    st.plotly_chart(fig, use_container_width=True)
-    st.caption(
-      "Grouped on SECONDARY category: every reviewed product in this dataset "
-      "is 'Skincare' at the primary level, so a primary-category chart would "
-      "be a single bar (D16)."
-    )
+  return min_reviews
 
 
 # --------------------------------------------------------------------------
-# Page 2 — Deep dive
-# --------------------------------------------------------------------------
-
-def page_analysis(categories, date_range, min_reviews):
-  page_header(
-    "Deep dive — price, hype and skin profile",
-    "Four questions where the intuitive answer turns out to be wrong. Every "
-    "slider on this page is a SQL parameter, not a filter applied after the "
-    "fact — moving one sends a new query to Postgres.",
-  )
-
-  # ---- BQ2: hype vs reality --------------------------------------------
-  section("BQ2 — Hype vs reality: which products are loved more than they "
-          "deserve?",
-          "Wanting a product and liking it are different signals, and the "
-          "products where they diverge most are the well-marketed ones.")
-
-  # Slider bounds come from the view itself, so even the range of the control
-  # traces back to the data rather than to a guessed constant. Deliberately NOT
-  # narrowed by the category filter: a slider whose end-points jump every time
-  # you tick a category is impossible to reason about mid-demo.
-  gap_bounds = q("""
-    SELECT min(hype_gap) AS lo, max(hype_gap) AS hi, count(*) AS products
-    FROM dw.vw_hype_vs_reality
-  """).iloc[0]
-  gap_lo = int(math.floor(float(gap_bounds["lo"]) * 100))
-  gap_hi = int(math.ceil(float(gap_bounds["hi"]) * 100))
-
-  min_gap = st.slider(
-    "Minimum hype gap (percentile points)",
-    min_value=gap_lo, max_value=gap_hi, value=gap_lo, step=1,
-    help="hype_gap is loves-percentile minus rating-percentile. 0 means a "
-         "product is loved exactly as much as its rating justifies; +40 means "
-         "it sits 40 percentile points higher on loves than on rating. Starts "
-         "at the minimum so the scatter opens on the full catalogue.",
-  )
-
-  hype = q("""
-    SELECT product_name, brand_name, secondary_category, price_usd,
-           loves_count, review_count, avg_rating, hype_gap
-    FROM dw.vw_hype_vs_reality
-    WHERE secondary_category = ANY(%s)
-      AND hype_gap >= %s
-    ORDER BY hype_gap DESC
-  """, (categories, min_gap / 100.0))
-
-  if hype.empty:
-    st.info("No products clear that hype gap in the selected categories.")
-  else:
-    fig = px.scatter(
-      hype, x="loves_count", y="avg_rating",
-      size="review_count", color="hype_gap",
-      color_continuous_scale=DIV, color_continuous_midpoint=0,
-      hover_data=["product_name", "brand_name", "price_usd"],
-      title="Loves (intention) vs average rating (satisfaction)",
-      labels={"loves_count": "Loves / wishlist adds",
-              "avg_rating": "Avg rating", "hype_gap": "Hype gap"},
-    )
-    st.plotly_chart(fig, use_container_width=True)
-
-    st.caption(
-      "`loves_count` is recorded BEFORE purchase (a wishlist add); rating is "
-      "recorded after. Red = far more loved than its rating justifies. Both "
-      "signals are percentile-ranked in SQL so a cheap moisturizer and a $300 "
-      "serum are comparable. Minimum 50 reviews per product. "
-      f"**{len(hype):,} of {int(gap_bounds['products']):,}** products clear the "
-      f"current hype-gap threshold ({min_gap:+d} points) — drag the slider "
-      "right and the cloud thins to the worst offenders."
-    )
-
-    # The sleeper-hit tail is queried separately and NOT filtered by the
-    # slider. It is the opposite end of the same distribution, so a
-    # "minimum hype gap" would empty it the moment the slider left its floor,
-    # which reads as a bug rather than as a filter doing its job.
-    sleepers = q("""
-      SELECT product_name, brand_name, loves_count, review_count,
-             avg_rating, hype_gap
-      FROM dw.vw_hype_vs_reality
-      WHERE secondary_category = ANY(%s)
-      ORDER BY hype_gap ASC
-      LIMIT 10
-    """, (categories,))
-
-    left, right = st.columns(2)
-    with left:
-      st.markdown("**Most overhyped** — high loves, low rating")
-      st.dataframe(
-        hype.head(10)[["product_name", "brand_name", "loves_count",
-                       "review_count", "avg_rating", "hype_gap"]],
-        hide_index=True, use_container_width=True)
-      st.caption("Filtered by the hype-gap slider above.")
-    with right:
-      st.markdown("**Sleeper hits** — better than their love count suggests")
-      st.dataframe(sleepers, hide_index=True, use_container_width=True)
-      st.caption("The opposite tail — not affected by the slider.")
-
-  st.divider()
-
-  # ---- BQ3: price vs rating --------------------------------------------
-  section("BQ3 — Does price predict satisfaction?",
-          "Not linearly. Ratings peak at $50-100 and fall back above it — but "
-          "expensive products are rated far more consistently.")
-
-  bands = q("""
-    SELECT price_band, band_order, review_count, product_count,
-           avg_rating, recommend_pct, rating_stddev
-    FROM dw.vw_rating_by_price_band
-    ORDER BY band_order
-  """)
-
-  left, right = st.columns(2)
-  with left:
-    fig = px.bar(bands, x="price_band", y="avg_rating",
-                 color="avg_rating", color_continuous_scale=SEQ,
-                 title="Average rating by price band",
-                 labels={"price_band": "", "avg_rating": "Avg rating"})
-    # The signal is a ~0.1 star spread. A zero-based axis would flatten it into
-    # five identical bars and hide the finding entirely.
-    fig.update_yaxes(range=[bands["avg_rating"].min() - 0.05,
-                            bands["avg_rating"].max() + 0.05])
-    fig.update_layout(coloraxis_showscale=False)
-    st.plotly_chart(fig, use_container_width=True)
-
-  with right:
-    fig = px.line(bands, x="price_band", y="rating_stddev", markers=True,
-                  title="Rating spread (std dev) by price band",
-                  labels={"price_band": "", "rating_stddev": "Std dev"})
-    st.plotly_chart(fig, use_container_width=True)
-
-  st.caption(
-    "Not a straight line — an inverted U peaking at $50-100 and falling back "
-    "above $100. The steadily falling standard deviation is the sturdier "
-    "finding: expensive products are not just rated slightly higher, they are "
-    "rated far more CONSISTENTLY. Note the truncated y-axis on the left: the "
-    "whole spread is about a tenth of a star."
-  )
-
-  # ---- product-level scatter -------------------------------------------
-  price_bounds = q("""
-    SELECT min(price_usd) AS lo, max(price_usd) AS hi
-    FROM dw.vw_hype_vs_reality
-  """).iloc[0]
-  price_lo = int(math.floor(float(price_bounds["lo"])))
-  price_hi = int(math.ceil(float(price_bounds["hi"])))
-
-  price_range = st.slider(
-    "Price range (USD) — filters the product scatter below",
-    min_value=price_lo, max_value=price_hi,
-    value=(price_lo, price_hi), step=1, format="$%d",
-    help="Bounds the scatter only. The banded chart above is left whole on "
-         "purpose: it comes from vw_rating_by_price_band, whose bands are the "
-         "thing being compared.",
-  )
-
-  scatter = q("""
-    SELECT price_usd, avg_rating, review_count, product_name, brand_name,
-           secondary_category
-    FROM dw.vw_hype_vs_reality
-    WHERE secondary_category = ANY(%s)
-      AND price_usd BETWEEN %s AND %s
-  """, (categories, price_range[0], price_range[1]))
-
-  if scatter.empty:
-    st.info("No products in that price range for the selected categories.")
-  else:
-    fig = px.scatter(
-      scatter, x="price_usd", y="avg_rating", size="review_count",
-      color="secondary_category", hover_data=["product_name", "brand_name"],
-      trendline="ols", trendline_scope="overall",
-      title="Every product: price vs rating (with trend line)",
-      labels={"price_usd": "Price (USD)", "avg_rating": "Avg rating"},
-    )
-    st.plotly_chart(fig, use_container_width=True)
-    st.caption(
-      "The banded view above aggregates this cloud. At product level the "
-      "relationship is weak — price explains very little of the variation in "
-      "satisfaction, which is itself the answer to BQ3. "
-      f"Showing {len(scatter):,} products between ${price_range[0]} and "
-      f"${price_range[1]}; the OLS trend line is refitted to whatever the "
-      "slider selects, so narrowing the range genuinely changes the slope."
-    )
-
-  st.divider()
-
-  # ---- BQ4: skin profile ------------------------------------------------
-  section("BQ4 — Do reviewers with different skin profiles rate differently?",
-          "Slightly, and the honest answer is that the difference is too small "
-          "to act on — which is worth saying out loud.")
-
-  # Replaces a hardcoded HAVING >= 1000. The floor was always a judgement call;
-  # making it a parameter lets the audience watch the judgement being made -
-  # drop it to 0 and 'ebony' appears with 3 reviews and a wild average.
-  min_group_reviews = st.slider(
-    "Minimum reviews per skin group",
-    min_value=0, max_value=25000, value=1000, step=500,
-    help="Applied as HAVING sum(review_count) >= this, in SQL, to both charts. "
-         "A group of 3 reviews produces an average that swings a full star on "
-         "one more review — visible noise, not a finding.",
-  )
-
-  left, right = st.columns(2)
-
-  with left:
-    skin_type = q("""
-      SELECT skin_type,
-             sum(review_count)                                            AS reviews,
-             round(sum(avg_rating * review_count) / sum(review_count), 4) AS avg_rating
-      FROM dw.vw_rating_by_skin_type
-      WHERE secondary_category = ANY(%s)
-      GROUP BY skin_type
-      HAVING sum(review_count) >= %s
-      ORDER BY avg_rating DESC
-    """, (categories, int(min_group_reviews)))
-
-    if skin_type.empty:
-      st.info(f"No skin type has {min_group_reviews:,} reviews. Lower the floor.")
-    else:
-      fig = px.bar(skin_type, x="skin_type", y="avg_rating",
-                   color="avg_rating", color_continuous_scale=SEQ,
-                   title=f"Average rating by skin type "
-                         f"(min {min_group_reviews:,} reviews)",
-                   labels={"skin_type": "", "avg_rating": "Avg rating"})
-      fig.update_yaxes(range=[skin_type["avg_rating"].min() - 0.05,
-                              skin_type["avg_rating"].max() + 0.05])
-      fig.update_layout(coloraxis_showscale=False)
-      st.plotly_chart(fig, use_container_width=True)
-
-  with right:
-    skin_tone = q("""
-      SELECT skin_tone,
-             sum(review_count)                                            AS reviews,
-             round(sum(avg_rating * review_count) / sum(review_count), 4) AS avg_rating
-      FROM dw.vw_rating_by_skin_tone
-      WHERE secondary_category = ANY(%s)
-      GROUP BY skin_tone
-      HAVING sum(review_count) >= %s
-      ORDER BY avg_rating DESC
-    """, (categories, int(min_group_reviews)))
-
-    if skin_tone.empty:
-      st.info(f"No skin tone has {min_group_reviews:,} reviews. Lower the floor.")
-    else:
-      fig = px.bar(skin_tone, x="skin_tone", y="avg_rating",
-                   color="avg_rating", color_continuous_scale=SEQ,
-                   title=f"Average rating by skin tone "
-                         f"(min {min_group_reviews:,} reviews)",
-                   labels={"skin_tone": "", "avg_rating": "Avg rating"})
-      fig.update_yaxes(range=[skin_tone["avg_rating"].min() - 0.05,
-                              skin_tone["avg_rating"].max() + 0.05])
-      fig.update_layout(coloraxis_showscale=False)
-      st.plotly_chart(fig, use_container_width=True)
-
-  st.caption(
-    "This is the question the junk dimension exists for. Holding these four "
-    "attributes on dim_customer would have forced one profile per person and "
-    "mis-tagged 13.69% of reviews — this exact chart would have been quietly "
-    "wrong (D2). 'Unknown' is kept rather than filtered: it means the reviewer "
-    "declined to say, which is a real answer. Note the truncated axes — the "
-    "spread is real but small (~0.04), a weak signal, not a headline. "
-    f"At the current floor, {len(skin_type)} skin type(s) and "
-    f"{len(skin_tone)} skin tone(s) qualify; pull the floor to 0 and the two "
-    "smallest tone groups reappear with a handful of reviews between them, "
-    "which is what the floor is there to prevent."
-  )
-
-  st.divider()
-
-  # ---- review length ----------------------------------------------------
-  section("Does review length say anything about the rating?",
-          "Not about the average — but short reviews are markedly more "
-          "polarised than long ones.")
-
-  length = q("""
-    SELECT length_bucket, bucket_order, review_count, avg_review_length,
-           avg_rating, recommend_pct, rating_stddev,
-           pct_1_star, pct_5_star, pct_extreme
-    FROM dw.vw_rating_by_review_length
-    ORDER BY bucket_order
-  """)
-
-  # The Unknown bucket (no recorded length) is kept in the view so it reconciles
-  # to the fact table, but it is not a LENGTH, so plotting it on an ordered
-  # length axis would be a category error. It stays visible in the table below.
-  plotted = length[length["length_bucket"] != "Unknown"]
-
-  left, right = st.columns(2)
-  with left:
-    fig = px.bar(plotted, x="length_bucket", y="avg_rating",
-                 color="avg_rating", color_continuous_scale=SEQ,
-                 title="Average rating by review length",
-                 labels={"length_bucket": "", "avg_rating": "Avg rating"})
-    # Truncated for the same reason as the price and skin charts: the spread is
-    # ~0.06 of a star. Stated in the caption rather than left to be noticed.
-    fig.update_yaxes(range=[plotted["avg_rating"].min() - 0.02,
-                            plotted["avg_rating"].max() + 0.02])
-    fig.update_layout(coloraxis_showscale=False)
-    st.plotly_chart(fig, use_container_width=True)
-
-  with right:
-    melted = plotted.melt(
-      id_vars="length_bucket", value_vars=["pct_1_star", "pct_5_star"],
-      var_name="share", value_name="pct")
-    fig = px.bar(melted, x="length_bucket", y="pct", color="share",
-                 barmode="group",
-                 title="Share of 1-star and 5-star reviews by length",
-                 labels={"length_bucket": "", "pct": "% of reviews",
-                         "share": ""})
-    st.plotly_chart(fig, use_container_width=True)
-
-  # Read off the view rather than written into the prose. The incremental load
-  # moves these by a hundredth of a point, and a caption that quotes a number
-  # the chart beside it no longer shows is worse than no caption.
-  shortest, longest = plotted.iloc[0], plotted.iloc[-1]
-  spread = float(plotted["avg_rating"].max() - plotted["avg_rating"].min())
-
-  st.caption(
-    "The common assumption is that unhappy customers write longer reviews. "
-    "**This data does not support it.** Average rating is essentially flat "
-    "across every length bucket — the left chart has a truncated y-axis and the "
-    f"whole spread is still only {spread:.3f} of a star, less than the price "
-    "effect. The right chart is where the signal is: going from the shortest "
-    "bucket to the longest, the share of 1-star reviews falls "
-    f"({shortest['pct_1_star']:.1f}% → {longest['pct_1_star']:.1f}%) **and** so "
-    f"does the share of 5-star reviews ({shortest['pct_5_star']:.1f}% → "
-    f"{longest['pct_5_star']:.1f}%). Short reviews are polarised; long reviews "
-    "are moderate. The two extremes shrink together, which is precisely why the "
-    "mean barely moves. Rating standard deviation falls across the same buckets "
-    f"({shortest['rating_stddev']:.4f} → {longest['rating_stddev']:.4f}) — the "
-    "same fact, stated a second way."
-  )
-
-  with st.expander("The numbers behind those two charts"):
-    st.dataframe(
-      length[["length_bucket", "review_count", "avg_review_length",
-              "avg_rating", "recommend_pct", "rating_stddev",
-              "pct_1_star", "pct_5_star", "pct_extreme"]],
-      hide_index=True, use_container_width=True)
-    st.caption(
-      f"All {int(length['review_count'].sum()):,} rows, including the "
-      f"{int(length.loc[length['length_bucket'] == 'Unknown', 'review_count'].iloc[0]):,} "
-      "with no recorded length — kept so `vw_rating_by_review_length` sums back "
-      "to `fact_reviews` exactly in `sql/validation/dashboard_checks.sql`, and "
-      "excluded from the charts above because 'Unknown' is not a length."
-    )
-
-
-# --------------------------------------------------------------------------
-# Router
+# Page
 # --------------------------------------------------------------------------
 
 def main():
@@ -1055,26 +981,34 @@ def main():
     )
     st.stop()
 
-  categories, date_range, min_reviews = sidebar_filters()
+  min_reviews = sidebar()
 
-  # Query-param default makes either page directly shareable (and keeps
-  # evidence captures reproducible) while the sidebar remains the normal
-  # navigation once the app is open.
-  requested_page = st.query_params.get("page", "").lower()
-  default_page = 1 if requested_page in {"deep", "deep-dive", "analysis"} else 0
-  page = st.sidebar.radio("Page", ["Overview", "Deep dive"], index=default_page)
-  if page == "Overview":
-    page_overview(categories, date_range, min_reviews)
-  else:
-    page_analysis(categories, date_range, min_reviews)
+  k = header_and_kpis()
+  st.divider()
 
-  st.sidebar.divider()
-  st.sidebar.caption(
-    "Every figure is queried live from `sephora_dw`. Numbers here are "
-    "reproducible with `sql/validation/dashboard_checks.sql` — if the two "
-    "disagree, this dashboard is wrong."
+  bq5_trend()
+  st.divider()
+
+  bq1_brands(min_reviews, float(k["avg_rating"]))
+  bq1_categories()
+  st.divider()
+
+  bq3_price()
+  st.divider()
+
+  bq2_hype()
+  st.divider()
+
+  bq4_and_length()
+  st.divider()
+
+  data_quality_panel()
+
+  st.caption(
+    "Sephora Products and Skincare Reviews · PostgreSQL → 3NF OLTP → star "
+    "schema → Airflow → Streamlit. Every figure above is queried live from "
+    "`sephora_dw` at render time."
   )
 
 
-if __name__ == "__main__":
-  main()
+main()

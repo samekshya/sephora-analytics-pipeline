@@ -110,7 +110,7 @@ Last verified: **2026-08-12**.
 - [x] Two invariants enforced as `CHECK` constraints, not just observed
 - [x] Quality checks run inside the DAG with visible pass/fail per table
 - [x] **Fault injection** — 15 cases proving the gate rejects bad data, not just accepts good
-- [x] **Real pytest suite** — 51 tests, unit and integration separated by marker
+- [x] **Real pytest suite** — 49 tests, unit and integration separated by marker
 - [x] Dashboard asserted against the warehouse it reads (`AppTest`)
 - [ ] **Coverage measurement** — not run. Test count is not coverage
 
@@ -128,7 +128,7 @@ Last verified: **2026-08-12**.
 - [x] KPI view states products reviewed **alongside** products in catalogue, so coverage isn't overstated
 - [x] Validation SQL separate from view DDL (D22)
 - [x] Every view reconciles to `fact_reviews` — verified, all 8 full-population views at exactly 1,093,371
-- [x] **Dashboard built** — Streamlit, 2 pages, live connection, interactive filters
+- [x] **Dashboard built** — Streamlit, one page, live connection, one deliberate control (D25)
 - [x] Charts state their own caveats (truncated axes, partial final month, minimum-review floors)
 - [ ] ~~At least one DAX measure~~ — **not applicable**: Streamlit was chosen over Power BI (D18). The cost is recorded there rather than hidden
 
@@ -156,7 +156,7 @@ Five, all deliberate:
 | External API enrichment | No business question needed data outside the source files |
 | Bridge table / many-to-many | The domain has one (`highlights`); it was measured and descoped for scope (D3). **Not** absent from the domain |
 | `EXPLAIN ANALYZE` capture | Indexes reasoned about and justified in DDL comments, but never benchmarked |
-| Coverage measurement | 51 tests exist and are documented by what they prove; percentage coverage was not measured |
+| Coverage measurement | 49 tests exist and are documented by what they prove; percentage coverage was not measured |
 | DAX measure | Not applicable — Streamlit chosen over Power BI (D18) |
 
 Nothing here is unchecked because it was forgotten.

@@ -240,7 +240,7 @@ try {
     Add-Kpi $slide 62 340 155 "1.09M" "warehouse facts" $Color.Coral
     Add-Kpi $slide 230 340 155 "15" "Airflow tasks" $Color.Cyan
     Add-Kpi $slide 398 340 155 "10" "analytics views" $Color.Yellow
-    Add-Kpi $slide 566 340 155 "51" "passing tests" $Color.Green
+    Add-Kpi $slide 566 340 155 "49" "passing tests" $Color.Green
     [void](Add-Text $slide 62 469 620 22 "Samekshya Baniya | PostgreSQL | Python | Airflow | Streamlit" 11 $Color.Muted)
     [void](Add-Text $slide 885 508 30 14 "1" 8.5 $Color.Muted $true $ppAlignCenter)
     Add-Notes $slide "0:40 - Introduce the complete pipeline and emphasize that every number in the deck is measured from live runs."
@@ -348,8 +348,8 @@ try {
     [void](Add-Text $slide 44 109 872 26 "Live connection to sephora_dw - every figure re-queried on render, every control a SQL parameter" 12.5 $Color.Muted)
     [void](Add-PictureContain $slide $OverviewShot 44 151 419 284)
     [void](Add-PictureContain $slide $AnalysisShot 497 151 419 284)
-    [void](Add-Text $slide 44 442 419 22 "Overview | KPIs and fifteen-year trend" 12 $Color.Cyan $true $ppAlignCenter)
-    [void](Add-Text $slide 497 442 419 22 "Deep dive | hype, price and skin profile" 12 $Color.Coral $true $ppAlignCenter)
+    [void](Add-Text $slide 44 442 419 22 "Top of page | KPIs and fifteen-year trend" 12 $Color.Cyan $true $ppAlignCenter)
+    [void](Add-Text $slide 497 442 419 22 "Lower page | price, hype and skin profile" 12 $Color.Coral $true $ppAlignCenter)
     [void](Add-Text $slide 44 470 872 30 "Price vs satisfaction is an inverted U: 4.238 under `$15 -> 4.334 at `$50-100 -> 4.271 above `$100, and rating spread narrows as price rises." 11.5 $Color.White $true $ppAlignCenter)
     Add-Notes $slide "1:25 - Present the price curve as the headline. Then explain hype, partial-month labelling, weak skin signals, and SQL-backed controls."
 
@@ -362,7 +362,7 @@ try {
     Add-Kpi $slide 464 166 196 "0" "duplicate fact keys" $Color.Green
     Add-Kpi $slide 674 166 196 "51 + 11" "host tests + DAG asserts" $Color.Cyan
 
-    Add-LabelBox $slide 44 287 410 154 "Live demo in four moves" "1. Show the successful incremental run`n2. Open the live Overview KPIs`n3. Move one Deep dive SQL control`n4. Reconcile views to fact_reviews" $Color.Coral
+    Add-LabelBox $slide 44 287 410 154 "Live demo in four moves" "1. Show the successful incremental run`n2. Open the live dashboard KPIs`n3. Move the SQL-backed review floor`n4. Reconcile views to fact_reviews" $Color.Coral
     Add-LabelBox $slide 506 287 410 154 "Where to verify it" "README.md - setup + diagrams`ndocs/ - decisions + evidence`ndashboard/ - app + metric model`nsql/validation/ - source-of-truth checks" $Color.Cyan
     [void](Add-Text $slide 44 466 872 29 "Questions?" 22 $Color.White $true $ppAlignCenter $msoAnchorMiddle "Aptos Display")
     Add-Notes $slide "0:35 - Close with the exact verified totals and give the four-step live demo route."

@@ -1,0 +1,21 @@
+# Sephora theme — black, white, brand red.
+#
+# Set here rather than only in CSS so Streamlit's OWN chrome (widgets, sidebar,
+# expander headers, dataframe grid) is themed too. Without this the app renders
+# dark charts inside light Streamlit widgets on whatever the viewer's local
+# theme happens to be, which is exactly the inconsistency the dashboard is
+# trying not to have.
+
+[theme]
+base = "dark"
+primaryColor = "#F5405F"           # brand red — buttons, focus rings, slider track
+backgroundColor = "#0A0A0A"        # Sephora black, the page plane
+secondaryBackgroundColor = "#151515"  # cards, sidebar blocks, dataframe header
+textColor = "#FFFFFF"
+font = "sans serif"
+
+[server]
+headless = true
+
+[browser]
+gatherUsageStats = false

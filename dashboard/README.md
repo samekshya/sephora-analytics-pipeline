@@ -1,7 +1,7 @@
 # Dashboard
 
-Streamlit app over `sephora_dw`. Two pages, five business questions, live
-Postgres connection.
+Streamlit app over `sephora_dw`. **One page**, five business questions, live
+Postgres connection, Sephora black/white/red (**D25**).
 
 ## Running it
 
@@ -10,10 +10,11 @@ py -m pip install -r requirements.txt
 py -m streamlit run dashboard/app.py
 ```
 
-Opens on <http://localhost:8501>. Use
-<http://localhost:8501/?page=deep-dive> for a direct link to Deep dive; the
-sidebar radio remains the normal in-app navigation. Needs the warehouse container up
-(`docker compose up -d`) and a `.env` at the repo root — see `.env.example`.
+Opens on <http://localhost:8501>. There is no navigation — the whole dashboard
+is one scrolling page, so a demo cannot land on the wrong view. Needs the
+warehouse container up (`docker compose up -d`) and a `.env` at the repo root —
+see `.env.example`. Theme colours live in `.streamlit/config.toml` so Streamlit's
+own widgets match the charts.
 
 If the warehouse is unreachable the app shows the connection string it tried
 and stops, rather than rendering empty charts that look like "no data".
@@ -29,65 +30,71 @@ be reviewed in a pull request like any other code.
 
 ## The five business questions and the visual that answers each
 
-| # | Question | Page | Visual | Source view |
-|---|---|---|---|---|
-| BQ1 | Which brands earn the highest ratings, and which underperform? | Overview | Paired horizontal bars — best 10 / worst 10 | `vw_rating_by_brand` |
-| BQ1b | Which categories rate best? | Overview | Bubble scatter, volume vs rating | `vw_rating_by_category` |
-| BQ2 | Hype vs reality — high loves, low rating | Deep dive | Scatter + two ranked tables | `vw_hype_vs_reality` |
-| BQ3 | Does price predict satisfaction? | Deep dive | Bar by price band + std-dev line + product scatter with OLS trend | `vw_rating_by_price_band`, `vw_hype_vs_reality` |
-| BQ4 | Do skin type / skin tone change ratings? | Deep dive | Two bar charts, side by side | `vw_rating_by_skin_type`, `vw_rating_by_skin_tone` |
-| BQ5 | How do volume and rating trend over time? | Overview | Monthly volume bars + three rating lines | `vw_review_volume_by_month` |
-| — | Does review length say anything about the rating? | Deep dive | Rating bar + 1★/5★ share bars | `vw_rating_by_review_length` |
+Read top to bottom. Each section states its finding **in words** under the
+heading, so the page can be read without interpreting a single chart.
+
+| # | Question | Visual | Source view |
+|---|---|---|---|
+| BQ5 | How do volume and rating trend over time? | Monthly volume bars (partial month greyed) + monthly vs 3-month rolling rating lines | `vw_review_volume_by_month` |
+| BQ1 | Which brands rate best, and which underperform? | Diverging horizontal bars: each brand's distance from the 4.299 overall average | `vw_rating_by_brand` |
+| BQ1b | Which categories rate best? | Horizontal **dot plot**, ordered | `vw_rating_by_category` |
+| BQ3 | Does price predict satisfaction? | Line across the ordered price bands (the inverted U) + a spread line | `vw_rating_by_price_band` |
+| BQ2 | Hype vs reality — high loves, low rating | Diverging scatter, three worst direct-labelled, plus two ranked tables in an expander | `vw_hype_vs_reality` |
+| BQ4 | Does who reviews, or how much they write, change the rating? | Skin-type **dot plot** + review-length **small multiples** | `vw_rating_by_skin_type`, `vw_rating_by_review_length` |
+
+### Why dots and lines rather than bars
+
+Most effects in this data are a tenth of a star, so the axis has to be truncated
+to show them at all. **A truncated axis under bars misleads**: bar length is read
+from zero, so on the old price chart "Under $15" (4.2383) was drawn about six
+times shorter than "$50–100" (4.3335) — a 2% difference rendered as 600%. A dot
+or a line point encodes *position*, so the same truncation is honest. The
+category, price and skin-type charts all changed form for this reason (D25).
+
+Review length is **small multiples** for a related reason: the 1★ share (3–8%)
+and 5★ share (61–67%) are on different scales, and sharing one axis flattened the
+1★ decline — half the finding — into a strip along the baseline. A second y-axis
+would be worse, not better.
+
+### The palette
+
+Two series colours only — red `#F5405F` and blue `#5589C7` — because the page
+never plots more than two series at once. Both were run through a
+colour-vision-deficiency validator against the actual card surface (worst-pair
+CVD ΔE 16.1, normal-vision 29.1). A third warm hue was tried and cut: it failed
+deuteranope separation against the brand red. The five price bands use a
+single-hue ordinal red ramp; the hype scatter uses red↔blue with a visible
+neutral midpoint.
 
 ## Interactive controls
 
-Every one of these is a real query parameter — the value is bound into the SQL
-and Postgres is asked again. None of them filter a dataframe after the fact,
+**One**, plus Refresh. It is a real query parameter — the value is bound into the
+SQL and Postgres is asked again. It does not filter a dataframe after the fact,
 which would look identical on screen and be a different claim entirely.
-`tests/integration/test_dashboard_smoke.py` asserts this per control rather
-than taking it on trust: each test moves one slider and requires the
-corresponding caption to change.
 
-### Sidebar — apply to both pages
-
-| Control | What it does | Why it's there |
+| Control | Bound into | Why it's there |
 |---|---|---|
-| **Category (secondary)** | Filters products by secondary category | Primary category is always `Skincare` in this dataset (D16), so secondary is the level that varies |
-| **Review date range** | Bounds the trend chart | Lets you isolate the 2020 volume spike or the 2023 incremental batch |
-| **Minimum reviews** | Floor on reviews per brand/product | The most important control on the page. Set it to 1 and "best brands" becomes brands with a single 5-star review |
+| **Minimum reviews per brand** | `WHERE review_count >= %s` on `vw_rating_by_brand` | Without a floor the "best brand" is whichever has a single 5-star review. This is the one control that changes what the data *says*, so it is the one that survived D25 |
 | **Refresh data** | Clears the query cache and freezes the row-count baseline | Run the Airflow DAG, click this, watch the review count move — this is what makes "live" demonstrable |
-| **How to read this** | Expander: the four conventions that are easy to misread | Truncated axes, review floors, `Unknown` as a category, where to reproduce a number |
+| **How to read this** | Expander: the conventions that are easy to misread | Truncated axes, `Unknown` as a category, the two-colour rule, where to reproduce a number |
 
-### Deep dive — one per question, sitting above the chart it drives
-
-| Control | Bound into | Range |
-|---|---|---|
-| **Minimum hype gap (percentile points)** | `WHERE hype_gap >= %s` on `vw_hype_vs_reality` — filters the scatter and the "most overhyped" table | Read from the view's own `min`/`max`, so the ends are data-derived. Defaults to the minimum, i.e. the whole catalogue |
-| **Price range (USD)** | `WHERE price_usd BETWEEN %s AND %s` on the product scatter | `$3`–`$449`, read from the view. The OLS trend line refits to the selection, so narrowing genuinely changes the slope |
-| **Minimum reviews per skin group** | `HAVING sum(review_count) >= %s` on both BQ4 charts | 0–25,000, default 1,000. Replaces a hardcoded `HAVING >= 1000` |
-
-Two notes on deliberate non-behaviour. The **sleeper hits** table is not filtered
-by the hype-gap slider: it is the opposite tail of the same distribution, so a
-minimum gap would empty it the moment the slider left its floor. The **price
-band** bar chart is not filtered by the price slider: its bands are the thing
-being compared, and it comes from a different view.
-
-The slider end-points deliberately do *not* narrow when you change the category
-filter. A control whose range moves while you are using it cannot be reasoned
-about mid-demo.
+The category multiselect, date-range slider, hype-gap slider, price-range slider
+and skin-group floor were **removed** in D25. Each was a genuine SQL parameter,
+but five controls on a page nobody operates is complexity for its own sake, and
+each was a way for a live demo to end up in a state that does not show the
+finding.
 
 ## The live status strip
 
-Sits directly under the KPI row on the Overview page and shows the warehouse
-watermark (`max(submission_date)`) and the `fact_reviews` row count, both read
-from the same `vw_kpi_summary` row the KPIs above use — not a second query that
-could disagree with it under caching.
+Folded into the KPI card itself since D25: the caption under the five metrics
+carries the data range, the warehouse watermark (`max(submission_date)`) and the
+row-count delta. All of it reads from the same `vw_kpi_summary` row the metrics
+above use — not a second query that could disagree with it under caching.
 
-The row count carries a **delta**. The baseline is frozen when you press
-**Refresh data**, not updated on every render: otherwise moving any slider would
-reset the comparison before the jump was visible. Load `historical` mode, run
-the incremental DAG, press Refresh, and the strip reads `+49,503 since last
-refresh`.
+The delta's baseline is frozen when you press **Refresh data**, not updated on
+every render: otherwise any rerun would reset the comparison before the jump was
+visible. Load `historical` mode, run the incremental DAG, press Refresh, and it
+reads `+49,503 since last refresh`.
 
 ## The data quality panel
 
@@ -119,48 +126,53 @@ to every row — not only the parts that are convenient to query.
 
 ## Reading each visual
 
-**Review volume by month** — bars are raw monthly counts. The final month is
-flagged `partial month`: data ends 21 March 2023, so its bar is short because
-the month is incomplete, not because demand collapsed.
+**Review volume by month** — bars are raw monthly counts. The final bar is
+**grey**: data ends 21 March 2023, so March is short because the month is
+incomplete, not because demand collapsed. Greyed rather than annotated, because
+a floating label had nowhere to sit among 20k-tall bars without touching one.
 
-**Average rating: monthly vs smoothed** — three lines. The monthly line is
-noisy in the early years when volume was a few hundred reviews a month. The
-rolling 3-month and cumulative lines are SQL window functions in
-`vw_review_volume_by_month`, not chart smoothing — the same numbers appear in
-`sql/validation/dashboard_checks.sql`.
+**Monthly vs 3-month rolling rating** — two lines, not three. The monthly line
+is noisy in the early years when volume was a few hundred reviews a month; the
+rolling line is a SQL window function in `vw_review_volume_by_month`, not chart
+smoothing. The cumulative line was dropped: three lines on one axis was clutter,
+and the cumulative average answers a question nobody asked.
 
-**Best / worst brands** — the caption states how many of the 304 brands clear
-the current floor, so the sample the chart is drawn from is visible rather than
-implied.
+**Brands against the overall average** — bars measure each brand's *distance
+from 4.299*, so "underperform" means something concrete. Red is above average,
+blue below, and the zero line is the average a shopper actually experiences.
+The caption states how many of the 304 brands clear the current floor, so the
+sample the chart is drawn from is visible rather than implied.
+
+**Categories** — a dot plot, ordered. The whole spread is 0.18 of a star against
+more than a full star between brands, which is the finding: **category matters
+far less than brand.**
+
+**Price vs rating** — a line across the ordered bands, and the shape is the
+point: ratings climb to 4.3335 at `$50–100` and fall back to 4.2708 above $100.
+The spread line beside it turns in the **same** band — tightest at 1.0996, then
+widening to 1.1366 above $100. So `$50–100` is the sweet spot on both measures.
+(An earlier version of this file claimed spread "falls steadily as price rises".
+It does not — see D25.)
 
 **Hype vs reality** — `loves_count` is a wishlist add, recorded *before*
 purchase; rating is recorded *after*. Raw loves are dominated by category and
-price, so both are converted to percentile ranks in SQL and compared. Red
-points are loved far more than their rating justifies. Minimum 50 reviews per
-product, because a "worst offender" list built on 3 reviews is a list of
-accidents.
+price, so both are converted to percentile ranks in SQL and compared. Red points
+are loved far more than their rating justifies, blue the reverse. The three worst
+are direct-labelled by **product**, not brand — The Ordinary holds two of them,
+so brand-only labels printed the same name twice. Minimum 50 reviews per product,
+because a "worst offender" list built on 3 reviews is a list of accidents.
 
-**Price vs rating** — **the y-axis is deliberately truncated.** The entire
-spread across five price bands is about a tenth of a star; a zero-based axis
-would render five identical bars and hide the finding. The truncation is called
-out in the caption on the page itself. The std-dev line beside it is the
-sturdier result: rating variance falls steadily as price rises.
+**Skin type** — a dot plot, axis truncated. `Unknown` is kept rather than
+filtered: it means the reviewer declined to answer, which is a real answer and a
+large share of the data. Hiding it would overstate how much is actually known.
 
-**Skin type / skin tone** — axes truncated for the same reason. `Unknown` is
-kept rather than filtered: it means the reviewer declined to answer, which is a
-real answer and a large share of the data. Hiding it would overstate how much
-is actually known.
-
-**Review length vs rating** — two charts, and the left one is the less
-interesting of the pair. Average rating is flat across every length bucket
-(0.056 of a star, less than the price effect), so **the common assumption that
-unhappy customers write longer reviews is not supported by this data.** The
-signal is in the right-hand chart: as reviews get longer the share of 1-star
-reviews falls from 8.2% to 3.7% *and* the share of 5-star reviews falls from
-67.3% to 62.5%. Short reviews are polarised, long reviews are moderate, and the
-two extremes cancel in the mean — which is exactly why the left chart looks
-like nothing is happening. `rating_stddev` falling monotonically across the
-same buckets is the same fact stated a second way.
+**Review length** — two stacked panels, and the reason they are stacked is the
+finding. Average rating is flat across every length bucket, so **the common
+assumption that unhappy customers write longer reviews is not supported by this
+data.** What is happening is that as reviews get longer the 1★ share falls from
+8.15% to 3.73% *and* the 5★ share falls from 67.35% to 62.52%. Short reviews are
+polarised, long ones moderate, and the two extremes cancel in the mean. On a
+shared axis the 1★ panel — half the finding — was a flat strip against 65% bars.
 
 The numbers in that caption are read off the view at render time rather than
 written into the prose, so the incremental load cannot leave them stale.

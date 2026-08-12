@@ -40,7 +40,7 @@ The warehouse is structured to answer:
 - **PostgreSQL 16** — two databases: `sephora_oltp` (`raw` + `3nf` + `staging`) and
   `sephora_dw` (star schema)
 - **Apache Airflow 3.3.0** — staged DAG, watermark-driven incremental loads
-- **Streamlit + Plotly** — 2-page dashboard, live connection, answering the five business questions (D18)
+- **Streamlit + Plotly** — single-page dashboard, live connection, answering the five business questions (D18, D25)
 - **SQL** — append-only numbered migrations
 
 ## Architecture
@@ -100,8 +100,8 @@ reads. The warehouse then denormalizes deliberately — that contrast is the poi
 | ETL package + `pipeline.py` | Complete — three modes, reconciliation, idempotency all verified |
 | Airflow staged DAG | Complete — 15 tasks, cleanup teardown, both modes green |
 | Analytics views | Complete — 10 views, all full-population views reconciling to `fact_reviews` |
-| Streamlit dashboard | Complete — 2 pages, live, smoke-tested against the warehouse |
-| Tests | 51 passing + 11 DAG assertions verified in-container |
+| Streamlit dashboard | Complete — one page, Sephora theme, live, smoke-tested against the warehouse |
+| Tests | 49 passing + 11 DAG assertions verified in-container |
 | Documentation | Complete — [`docs/`](docs/README.md), 11 numbered documents |
 
 ## The data
@@ -361,8 +361,8 @@ See [`dashboard/README.md`](dashboard/README.md) for what each visual shows and
 
 ![Streamlit overview](docs/screenshots/streamlit_overview.png)
 
-The Deep dive can also be opened directly at
-<http://localhost:8501/?page=deep-dive> for a stable presentation link.
+The whole dashboard is one page, so there is no navigation to get wrong mid-demo — the
+presentation link is just <http://localhost:8501>.
 
 ## Presentation
 
@@ -384,9 +384,11 @@ Price does **not** predict satisfaction linearly. It is an inverted U:
 | **$50–100** | **4.3335** ← peak | 1.0996 |
 | $100+ | 4.2708 ← falls back | 1.1366 |
 
-The mean is the weaker half of it. The **standard deviation falls steadily** as price rises —
-expensive products aren't mainly rated *higher*, they're rated far more **consistently**.
-Above $100 satisfaction drops back to roughly what a $15 product achieves.
+The mean is the weaker half of it. **Standard deviation** — the width of opinion — is the
+sturdier signal, and it turns in the same place the rating does: tightest at **1.0996 in
+$50–100**, then widening again to 1.1366 above $100. So $50–100 is both the best-rated band
+and the most agreed-upon one, and the priciest band regresses on **both** measures. (It is not
+a monotone fall; saying so would contradict the table above.)
 
 ## Verified
 
@@ -508,7 +510,7 @@ etl/
   load.py                        inserts with ON CONFLICT DO NOTHING
   staging.py                     per-run staging-table helpers for the DAG
 dashboard/
-  app.py                         Streamlit, 2 pages, live connection
+  app.py                         Streamlit, one page, live connection
   README.md                      what each visual shows
   data_model.md                  which tables and views it reads
 sql/

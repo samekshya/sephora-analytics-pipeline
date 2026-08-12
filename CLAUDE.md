@@ -15,7 +15,7 @@ actually stands right now*.
 ### The one-line summary
 
 **Stages 1–11 of the pipeline are built, run, and verified.** The warehouse holds
-1,093,371 fact rows, Airflow runs both modes green, the dashboard works, 51 tests
+1,093,371 fact rows, Airflow runs both modes green, the dashboard works, 49 tests
 pass, and the eight-minute deck is complete. The DAG was then simplified from 16
 tasks / 33 edges to **15 / 21** by replacing the failure watcher with a teardown
 (**D24**), which is verified by an injected failure and fixed a latent race.
@@ -56,7 +56,7 @@ sql/oltp/           01_raw_schema.sql + 15 timestamped migrations (raw → 3nf �
 sql/datawarehouse/  7 numbered migrations — 5 dims + fact_reviews
 sql/analytics/views/  10 views, the dashboard's only read surface
 sql/validation/     dashboard_checks.sql — read-only assertions, changes nothing (D22)
-dashboard/app.py    Streamlit, 2 pages, ~1,075 lines, live Postgres connection
+dashboard/app.py    Streamlit, ONE page, Sephora theme, live Postgres connection (D25)
 tests/              unit/ + integration/ + test_dag_structure.py + verify_dag_in_container.py
 docs/               01–11 plus README index and 4 verified runtime screenshots
 setup.ps1           11 resumable steps, end to end from empty Docker to loaded warehouse
@@ -75,7 +75,7 @@ docker compose up -d
 .\setup.ps1
 
 # 3. Tests
-py -m pytest              # 51 collected; 1 skips locally (airflow not in host venv)
+py -m pytest              # 49 collected; 1 skips locally (airflow not in host venv)
 
 # 4. Dashboard
 py -m streamlit run dashboard/app.py        # http://localhost:8501
@@ -183,7 +183,7 @@ recording a decision-log entry.
   > separate Sephora project at `D:\Data Projects\sephora-analytics-de-project`). This project
   > uses its own container on 5434 — never point it at 5432 or 5433.
 - **Apache Airflow 3.3.0** — Docker Compose, LocalExecutor, staged DAG, watermark incremental
-- **Streamlit + Plotly** — 2-page dashboard, live Postgres connection (D18; replaced Power BI)
+- **Streamlit + Plotly** — single-page dashboard, live Postgres connection (D18; replaced Power BI)
 - **SQL** — append-only numbered migrations
 
 ---
@@ -201,7 +201,7 @@ sephora_oltp ── raw schema       1:1 CSV mirror, loaded by ingest.py (COPY)
    ▼  etl/ package: extract → transform → reconcile → quality gate → load
 sephora_dw     dw schema — 5 dimensions + fact_reviews + 10 analytics views
    ▼
-Streamlit dashboard (2 pages, live connection)
+Streamlit dashboard (one page, live connection)
 ```
 
 Orchestrated by `dags/sephora_dw_pipeline_staged.py` (15 tasks) or run locally with
@@ -258,8 +258,8 @@ Indexes on all four fact FK columns. **No `brand_key` on the fact table** (D11).
 | 5. ETL package + `pipeline.py` | **Done** — three named load modes (D17), row reconciliation (D19), severity-aware quality gate (D21) |
 | 6. Airflow staged DAG | **Done** — 15 tasks; cleanup is a teardown, replacing the failure watcher (D24, superseding D20); historical, incremental and an injected-failure run all verified |
 | 7. Analytics views | **Done** — 10 views (one uses window functions), split from validation SQL (D22) |
-| 8. Streamlit dashboard | **Done** — 2 pages, live connection, 3 slider-driven query params, live status strip and data-quality panel (D18, D23) |
-| 9. Tests | **Done** — 51 pytest passing + 11 DAG assertions verified in-container |
+| 8. Streamlit dashboard | **Done** — rebuilt as ONE page with a validated Sephora palette; one query-bound control, live KPI strip and data-quality panel (D18, D23, D25) |
+| 9. Tests | **Done** — 49 pytest passing + 11 DAG assertions verified in-container. Was 51; D25 removed three per-slider tests and added two single-page ones |
 | 10. Documentation | **Done** — `docs/01`–`11` + index; 24 decisions logged |
 | 11. Reproducibility | **Done** — `setup.ps1`, 11 resumable steps; `.env.example` with working defaults |
 | — Dashboard polish | **Done and merged** — status strip, 3 query-param controls, shareable Deep-dive URL, `vw_rating_by_review_length`, data-quality panel, shared page shape. Source of D23 |
@@ -340,7 +340,7 @@ Fill in from actual runs. Never estimate here — if it isn't measured, leave it
 | **Staging cleanup** | All 6 staging tables at 0 rows after every run, including the injected-failure run |
 | **Analytics views** | **10** views created; all 8 full-population views reconcile to 1,093,371 exactly (`vw_rating_by_skin_type` and `vw_hype_vs_reality` are deliberate subsets) |
 | **DAG structure** | 15 tasks, 21 edges; 11/11 assertions pass in-container (`load_fact_from_staging` is the only effective leaf; every task has a propagation path to it) |
-| **Final test suite (2026-08-12)** | **51 passed**, 1 skipped locally (Airflow is verified separately in-container); 31 non-failing pandas DBAPI compatibility warnings |
+| **Final test suite (2026-08-12)** | **49 passed**, 1 skipped locally (Airflow is verified separately in-container); 31 non-failing pandas DBAPI compatibility warnings |
 | **Migration idempotency** | All 22 migrations re-applied against a fully-loaded database with no error |
 | **Dashboard** | Both pages render via `AppTest`; KPI row equals `SELECT count(*), avg(rating) FROM dw.fact_reviews`. Each of the 3 Deep-dive sliders asserted live individually (hype gap 1,660 → 484 products, price 1,660 → 935, skin tones 12 → 14 at floor 0) |
 | **Live-refresh demo, verified end to end** | `DELETE FROM dw.fact_reviews WHERE submission_date >= '2023-01-01'` → exactly 1,043,868 / watermark 2022-12-31; incremental restores 49,503 with 0 already present. `--mode historical` does **not** reset a full warehouse (no truncate anywhere, all loads `ON CONFLICT DO NOTHING`) |
@@ -350,7 +350,7 @@ Fill in from actual runs. Never estimate here — if it isn't measured, leave it
 | Finding | Detail |
 |---|---|
 | Overall | 1,093,371 reviews · avg rating **4.2990** · **83.99%** recommend |
-| **BQ3 — price vs satisfaction is an inverted U** | Under $15 **4.2383** → $15-30 4.2756 → $30-50 4.3055 → **$50-100 4.3335 (peak)** → $100+ **4.2708 (falls back)**. Rating variance also falls steadily as price rises (stddev 1.2211 → 1.0996) |
+| **BQ3 — price vs satisfaction is an inverted U** | Under $15 **4.2383** → $15-30 4.2756 → $30-50 4.3055 → **$50-100 4.3335 (peak)** → $100+ **4.2708 (falls back)**. Rating spread turns in the SAME band: stddev 1.2211 → 1.1861 → 1.1498 → **1.0996 ($50-100, tightest)** → 1.1366 ($100+, widens again). $50-100 is the sweet spot on both measures. **Not** a monotone fall — an earlier note here and in docs/07 and README claimed it was, contradicting their own tables |
 | BQ1a — best brands (≥500 reviews) | MARA 4.8608 · DAMDAM 4.7394 · Dr. Lara Devgan 4.7164 |
 | BQ1a — worst brands (≥500 reviews) | Topicals 3.6590 · DERMAFLASH 3.7856 · Isle of Paradise 3.8601 |
 | BQ1b — categories (secondary, see D16) | By volume: Moisturizers 297,201 (4.3172) · Treatments 221,871 (4.3040) · Cleansers 200,477 (**4.3443, best**) · Mini Size 85,433 (4.2856) · Eye Care 74,966 (**4.1784**) · Masks 70,483 (4.3410) · Lip Balms 61,321 (4.3327) · Sunscreen 41,126 (**4.1665, worst**) |

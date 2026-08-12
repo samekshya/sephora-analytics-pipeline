@@ -545,6 +545,11 @@ the dashboard and this file disagree, the dashboard is wrong.**
 
 ## D23. Dashboard controls are query parameters, and the quality panel recomputes
 
+> **Narrowed by [D25](#d25-one-page-one-control-and-a-validated-palette) on 2026-08-12.**
+> The principle stands and the panel is unchanged, but the dashboard was reduced to a
+> single page with **one** control, so the claim below is now demonstrated by the brand
+> review floor alone rather than by five separate widgets.
+
 **Date**: 2026-08-08
 
 **Decision**: every interactive control on the dashboard binds its value into the SQL rather
@@ -651,6 +656,77 @@ dimension branches stage their rows afterwards. Cleanup now waits on every stagi
 cost nothing structurally — each of those tasks still has `transform_fact` downstream, so
 cleanup stays ignorable and the leaf set is unchanged. Re-verified: all six staging tables at
 0 after an injected failure. Pinned by `test_cleanup_waits_for_every_staging_writer`.
+
+---
+
+## D25. One page, one control, and a validated palette
+
+**Date**: 2026-08-12 · narrows [D23](#d23-dashboard-controls-are-query-parameters-and-the-quality-panel-recomputes)
+
+**Decision**: the dashboard is a **single scrolling page** with **one** control (the
+brand review floor) plus Refresh, themed Sephora black / white / red.
+
+**Why one page**: two pages meant the five business questions were split across a
+navigation control, so answering "what did you find?" required knowing which page a
+finding lived on. A capstone dashboard is read once, in order, by someone who has
+never seen it. Scrolling is a better interface than navigating for that. Every
+section now states its finding **in words** under the heading, so the page is legible
+without reading a single chart.
+
+**Why one control**: the page previously carried a category multiselect, a date-range
+slider, a hype-gap slider, a price-range slider and a skin-group floor. Each was a
+genuine SQL parameter — that part of D23 was true and is preserved for the survivor —
+but five controls on a page nobody is going to operate is complexity for its own
+sake, and each one is a way for the demo to end up in a state that does not show the
+finding. The review floor stays because without it the "best brand" is whichever has
+a single 5-star review; it still binds in as `WHERE review_count >= %s`.
+
+**What this costs, stated plainly**: D23's claim was demonstrated by *five* controls
+and is now demonstrated by one. Three of the tests that asserted individual sliders
+were live are gone with the sliders. The data-quality panel half of D23 is untouched.
+
+### The palette was validated, not chosen
+
+Sephora's colours are black, white and the brand red. Every value was run through the
+data-viz validator against the actual `#151515` card surface rather than picked by eye:
+
+| Slot | Value | Result |
+|---|---|---|
+| Categorical pair | `#F5405F` red · `#5589C7` blue | worst-pair CVD ΔE **16.1**, normal-vision **29.1** |
+| Ordinal ramp (5 price bands) | `#F7A8B8` → `#A81736` | monotone lightness, single hue (11° spread) |
+| Diverging midpoint | `#8A8781` | neutral, and still visible on black |
+
+Only **two** categorical slots exist, because the page never plots more than two
+series at once. A third warm hue (gold `#E9B44C`) was tried and **cut**: it failed
+deuteranope separation against the brand red at ΔE 4.2, which the validator caught and
+an eye would not have.
+
+### Three charts changed form, because the old ones misled
+
+This is the part worth defending. Most effects in this data are a tenth of a star, so
+the axis has to be truncated to show them — and **a truncated axis under bars lies**,
+because bar length is read from zero. On the old price chart, "Under $15" (4.2383) was
+drawn roughly six times shorter than "$50–100" (4.3335): a 2% difference rendered as
+600%. Category and skin-type bars had the same defect.
+
+All three became **position encodings** — a line across the ordered price bands, dot
+plots for category and skin type. Same truncation, now honest, and the price line
+shows the inverted U at a glance instead of implying it.
+
+Review length became **small multiples**. The 1-star share (3–8%) and 5-star share
+(61–67%) live on different scales, so grouped on one axis the 5-star bars towered and
+the 1-star decline — half the finding — flattened into a strip along the baseline. A
+second y-axis is the usual fix and is worse: two arbitrary scales invent a
+relationship. Separate panels let each tail be read on its own scale.
+
+### A wrong claim the redesign caught
+
+Rendering the price chart exposed that **`rating_stddev` is not monotonic**. It falls
+1.2211 → 1.0996 through `$50–100` and then **widens again to 1.1366** above $100. This
+document, `README.md` and `CLAUDE.md` all asserted it "falls steadily as price rises",
+each of them directly beneath a table showing otherwise. Corrected everywhere. The
+accurate finding is stronger: **$50–100 is the sweet spot on both measures** — best
+rated *and* most agreed upon — and the priciest band regresses on both at once.
 
 ---
 

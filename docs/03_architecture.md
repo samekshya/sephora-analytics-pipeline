@@ -77,7 +77,7 @@
 ╚═══════════════════════════════════════════════════════════════════════════╝
         │
         ▼
- dashboard/app.py       Streamlit, 2 pages, LIVE connection.
+ dashboard/app.py       Streamlit, ONE page, LIVE connection.
                         Reads views, never raw fact/dim joins.
 ```
 
