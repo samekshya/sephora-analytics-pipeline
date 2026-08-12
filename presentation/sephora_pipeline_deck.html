@@ -1,0 +1,1168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sephora Skincare Reviews — Data Engineering Capstone</title>
+
+<!-- Bodoni Moda carries the beauty-editorial voice (it is the Vogue/cosmetics
+     display serif); Archivo keeps the body text plain and legible at distance;
+     JetBrains Mono is used only for real identifiers from the codebase. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400..800;1,6..96,400..600&family=Archivo:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+
+<style>
+/* ===========================================================================
+   THEME — Sephora: black, ivory, one hot red. Change these to change the deck.
+   =========================================================================== */
+:root {
+    --stage-bg: #0C0808;          /* letterbox area around the stage */
+    --slide-bg: #FAF6F4;          /* warm ivory ground */
+    --ink: #17110F;               /* near-black body text */
+    --muted: #7C6F6A;             /* secondary text */
+    --faint: #A2938D;             /* tertiary text, footers */
+    --red: #D6001C;               /* Sephora red — accents only, never body */
+    --blush: #F6E7E4;             /* soft fill for chips and panels */
+    --line: #E4D8D4;              /* hairlines and card borders */
+    --white: #FFFFFF;
+    --black: #17110F;
+
+    --font-display: 'Bodoni Moda', Georgia, serif;
+    --font-body: 'Archivo', 'Helvetica Neue', sans-serif;
+    --font-mono: 'JetBrains Mono', Consolas, monospace;
+
+    --ease: cubic-bezier(0.16, 1, 0.3, 1);
+    --dur: 0.7s;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+/* ===========================================================================
+   FIXED 16:9 STAGE: MANDATORY BASE STYLES (viewport-base.css, verbatim)
+   Slides are authored at 1920x1080 and the whole stage is scaled as one unit.
+   =========================================================================== */
+
+/* 1. Lock the browser viewport */
+html,
+body {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    overflow: hidden;
+    background: var(--stage-bg, #000);
+}
+
+/* 2. Full-window deck viewport */
+.deck-viewport {
+    position: fixed;
+    inset: 0;
+    overflow: hidden;
+    background: var(--stage-bg, #000);
+}
+
+/* 3. Fixed 16:9 design canvas.
+   JavaScript sets transform: translate(...) scale(...). */
+.deck-stage {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 1920px;
+    height: 1080px;
+    overflow: hidden;
+    transform-origin: 0 0;
+    background: var(--slide-bg, #fff);
+}
+
+/* 4. Slides stack inside the fixed stage.
+   Content must be laid out at 1920x1080, not reflowed per device. */
+.slide {
+    position: absolute;
+    inset: 0;
+    width: 1920px;
+    height: 1080px;
+    overflow: hidden;
+    display: block;
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
+    background: var(--slide-bg, #fff);
+}
+
+.slide.active,
+.slide.visible {
+    visibility: visible;
+    opacity: 1;
+    pointer-events: auto;
+    z-index: 1;
+}
+
+/* 5. Keep media inside authored slide bounds */
+img,
+video,
+canvas,
+svg {
+    max-width: 100%;
+    max-height: 100%;
+}
+
+/* 6. Presentation chrome stays outside the slide design system */
+.deck-controls {
+    position: fixed;
+    left: 50%;
+    bottom: 22px;
+    transform: translateX(-50%);
+    z-index: 1000;
+}
+
+/* 7. Print one fixed-size slide per page */
+@media print {
+    html,
+    body {
+        width: 1920px;
+        height: auto;
+        overflow: visible;
+        background: #fff;
+    }
+
+    .deck-viewport {
+        position: static;
+        overflow: visible;
+        background: #fff;
+    }
+
+    .deck-stage {
+        position: static;
+        width: auto;
+        height: auto;
+        transform: none !important;
+        background: none;
+    }
+
+    .slide {
+        position: relative;
+        display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        pointer-events: auto !important;
+        width: 1920px;
+        height: 1080px;
+        break-after: page;
+        page-break-after: always;
+    }
+
+    .slide:last-child {
+        break-after: auto;
+        page-break-after: auto;
+    }
+
+    .deck-controls {
+        display: none !important;
+    }
+}
+
+/* 8. Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.2s !important;
+    }
+}
+
+/* ===========================================================================
+   TYPOGRAPHY + SHARED SLIDE FURNITURE
+   Every content slide is: kicker, title, red rule, then a body region.
+   =========================================================================== */
+body { font-family: var(--font-body); color: var(--ink); }
+
+/* The inner box every content slide lays itself out inside. */
+.inner {
+    position: absolute;
+    top: 74px;
+    right: 96px;
+    bottom: 92px;
+    left: 96px;
+    display: flex;
+    flex-direction: column;
+}
+
+.kicker {
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--red);
+}
+
+h2 {
+    font-family: var(--font-display);
+    font-size: 60px;
+    font-weight: 600;
+    line-height: 1.08;
+    letter-spacing: -0.01em;
+    margin-top: 14px;
+}
+
+/* One-sentence framing line under the title. */
+.lede {
+    font-size: 24px;
+    line-height: 1.5;
+    color: var(--muted);
+    margin-top: 16px;
+    max-width: 1400px;
+}
+
+.rule {
+    width: 96px;
+    height: 4px;
+    background: var(--red);
+    margin-top: 26px;
+}
+
+/* The flexible region below the header. min-height:0 lets figures shrink. */
+.body {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    gap: 54px;
+    margin-top: 40px;
+}
+
+/* Columns centre their content vertically, so a short column does not leave a
+   dead half-slide beneath it. Columns holding a flex:1 figure are unaffected. */
+.col { min-width: 0; min-height: 0; display: flex; flex-direction: column;
+    justify-content: center; }
+
+/* Footer strip, identical on every content slide. */
+.foot {
+    position: absolute;
+    left: 96px;
+    right: 96px;
+    bottom: 40px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 15px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--faint);
+    border-top: 1px solid var(--line);
+    padding-top: 14px;
+}
+
+.foot b { color: var(--red); font-weight: 700; }
+
+/* ===========================================================================
+   COMPONENTS
+   =========================================================================== */
+
+/* Figure frame — holds a diagram or screenshot and centres it without
+   distortion. The box is sized by the layout; the image fits inside it. */
+.figure {
+    flex: 1;
+    min-height: 0;
+    background: var(--white);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.figure img { width: 100%; height: 100%; object-fit: contain; }
+
+/* Dark variant, for the Airflow screenshot and the dashboard charts, which are
+   themselves dark-themed. */
+.figure.dark { background: #100C0C; border-color: #2C2320; }
+
+.figcap {
+    font-size: 15px;
+    color: var(--faint);
+    margin-top: 12px;
+    letter-spacing: 0.02em;
+}
+
+/* A titled list of points beside a figure. */
+.points { display: flex; flex-direction: column; gap: 22px; }
+
+.point { display: flex; gap: 18px; align-items: flex-start; }
+
+.point .n {
+    flex: none;
+    width: 30px;
+    font-family: var(--font-mono);
+    font-size: 15px;
+    color: var(--red);
+    padding-top: 5px;
+}
+
+.point h4 { font-size: 23px; font-weight: 600; line-height: 1.3; }
+
+.point p {
+    font-size: 19px;
+    line-height: 1.52;
+    color: var(--muted);
+    margin-top: 5px;
+}
+
+code, .mono { font-family: var(--font-mono); font-size: 0.92em; }
+.point p code { color: var(--ink); background: var(--blush); padding: 1px 6px;
+    border-radius: 4px; }
+
+/* The narrative slide carries only three points against a full-height column,
+   so it sets them a step larger. It is read from the back of the room, not
+   scanned like the reference slides. */
+.points.lead .point h4 { font-size: 26px; }
+.points.lead .point p { font-size: 21px; margin-top: 7px; }
+
+/* Card — a bordered white panel. */
+.card {
+    background: var(--white);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 30px 32px;
+}
+
+.card.black { background: var(--black); border-color: var(--black); color: var(--white); }
+.card.black h4 { color: var(--white); }
+.card.black p { color: #B7A9A4; }
+.card.blush { background: var(--blush); border-color: #EBD6D2; }
+
+/* Centres a card's own content, so a card stretched by a grid row does not
+   leave a band of empty space beneath its text. */
+.card.center { display: flex; flex-direction: column; justify-content: center; }
+
+/* Big measured numbers. */
+.statgrid { display: grid; gap: 20px; }
+.stat { background: var(--white); border: 1px solid var(--line); border-radius: 14px;
+    padding: 22px 24px; }
+.stat .v { font-family: var(--font-display); font-size: 46px; font-weight: 600;
+    line-height: 1; letter-spacing: -0.01em; }
+.stat .k { font-size: 16px; color: var(--muted); margin-top: 10px; line-height: 1.35; }
+.stat.red .v { color: var(--red); }
+
+/* Small pill labels. */
+.chip {
+    display: inline-block;
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    background: var(--blush);
+    color: var(--ink);
+    border-radius: 999px;
+    padding: 9px 18px;
+}
+
+/* ===========================================================================
+   SLIDE 1 — title. Black, minimal, nothing but the name of the thing.
+   =========================================================================== */
+.slide.cover { background: var(--black); }
+.cover .inner { justify-content: center; }
+.cover .kicker { color: var(--red); }
+.cover h1 {
+    font-family: var(--font-display);
+    font-size: 132px;
+    font-weight: 500;
+    line-height: 1.0;
+    letter-spacing: -0.02em;
+    color: var(--white);
+    margin-top: 34px;
+}
+.cover h1 em { font-style: italic; font-weight: 400; color: var(--red); }
+.cover .sub {
+    font-size: 30px;
+    line-height: 1.5;
+    color: #B7A9A4;
+    margin-top: 40px;
+    max-width: 1180px;
+}
+.cover .rule { margin-top: 52px; width: 148px; }
+.cover .byline {
+    position: absolute;
+    left: 96px;
+    right: 96px;
+    bottom: 66px;
+    display: flex;
+    justify-content: space-between;
+    font-size: 17px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: #6E605B;
+    border-top: 1px solid #2C2320;
+    padding-top: 20px;
+}
+
+/* ===========================================================================
+   ANIMATION — one staggered reveal per slide entry. Restrained on purpose.
+   =========================================================================== */
+.reveal {
+    opacity: 0;
+    transform: translateY(26px);
+    transition: opacity var(--dur) var(--ease), transform var(--dur) var(--ease);
+}
+
+.slide.visible .reveal { opacity: 1; transform: none; }
+
+.slide.visible .reveal:nth-child(1) { transition-delay: 0.05s; }
+.slide.visible .reveal:nth-child(2) { transition-delay: 0.13s; }
+.slide.visible .reveal:nth-child(3) { transition-delay: 0.21s; }
+.slide.visible .reveal:nth-child(4) { transition-delay: 0.29s; }
+.slide.visible .reveal:nth-child(5) { transition-delay: 0.37s; }
+.slide.visible .reveal:nth-child(6) { transition-delay: 0.45s; }
+
+/* ===========================================================================
+   DECK CHROME — progress bar and edit affordance, outside the 1920x1080 stage
+   =========================================================================== */
+.progress {
+    position: fixed;
+    left: 0;
+    top: 0;
+    height: 3px;
+    background: var(--red);
+    z-index: 1000;
+    transition: width 0.4s var(--ease);
+}
+
+.edit-hotzone {
+    position: fixed; top: 0; left: 0;
+    width: 80px; height: 80px;
+    z-index: 10000;
+    cursor: pointer;
+}
+
+.edit-toggle {
+    position: fixed; top: 16px; left: 16px;
+    width: 42px; height: 42px;
+    border: none; border-radius: 50%;
+    background: rgba(255,255,255,0.9);
+    font-size: 18px; cursor: pointer;
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.3s ease;
+    z-index: 10001;
+}
+
+.edit-toggle.show, .edit-toggle.active { opacity: 1; pointer-events: auto; }
+.edit-toggle.active { background: var(--red); }
+
+body.editing [data-edit]:hover { outline: 2px dashed var(--red); outline-offset: 4px; }
+body.editing [data-edit]:focus { outline: 2px solid var(--red); outline-offset: 4px; }
+</style>
+</head>
+<body>
+
+<div class="progress" id="progress"></div>
+<div class="edit-hotzone"></div>
+<button class="edit-toggle" id="editToggle" title="Edit mode (E)" aria-label="Toggle edit mode">✎</button>
+
+<div class="deck-viewport">
+<main class="deck-stage" id="deckStage">
+
+<!-- =======================================================================
+     SLIDE 1 — Title. Deliberately bare: the name, one line of what it is,
+     and who made it. Nothing else competes with it.
+     ======================================================================= -->
+<section class="slide cover active" aria-label="Title">
+    <div class="inner">
+        <div class="kicker reveal" data-edit>Data Engineering Capstone</div>
+        <h1 class="reveal" data-edit>Sephora<br>Skincare <em>Reviews</em></h1>
+        <div class="rule reveal"></div>
+        <p class="sub reveal" data-edit>
+            An end-to-end analytics pipeline — 1.09 million reviews from raw CSV,
+            through a normalized OLTP database and a star-schema warehouse,
+            orchestrated by Airflow and read by a live dashboard.
+        </p>
+    </div>
+    <div class="byline">
+        <span data-edit>Samekshya</span>
+        <span data-edit>August 2026</span>
+    </div>
+</section>
+
+<!-- =======================================================================
+     SLIDE 2 — The problem, then who it is for.
+     ======================================================================= -->
+<section class="slide" aria-label="Problem">
+    <div class="inner">
+        <div class="reveal">
+            <div class="kicker" data-edit>The problem</div>
+            <h2 data-edit>There is no good way to compare what actually works</h2>
+            <div class="rule"></div>
+        </div>
+
+        <!-- Hangs from the top rather than centring: with only three points and
+             one card the columns are short, and centring them left a void
+             between the rule and the first line that no other slide has. -->
+        <div class="body reveal" style="align-items: flex-start;">
+            <!-- Left: what is wrong today -->
+            <div class="col" style="flex: 1.15;">
+                <div class="points lead" style="gap: 68px;">
+                    <div class="point">
+                        <div class="n">01</div>
+                        <div>
+                            <h4 data-edit>You can read one product page at a time</h4>
+                            <p data-edit>1.09&nbsp;million reviews across 8,494 products sit in flat
+                            files. Nothing lets you rank a brand against its category, or a
+                            category against the rest of the catalogue.</p>
+                        </div>
+                    </div>
+                    <div class="point">
+                        <div class="n">02</div>
+                        <div>
+                            <h4 data-edit>A star rating without context is not an answer</h4>
+                            <p data-edit>4.3 stars means nothing until you can hold price band,
+                            skin type and review volume steady. A product with 12 reviews
+                            and one with 130,000 sit side by side, weighted the same.</p>
+                        </div>
+                    </div>
+                    <div class="point">
+                        <div class="n">03</div>
+                        <div>
+                            <h4 data-edit>“Wanted” and “liked” are different signals</h4>
+                            <p data-edit><code>loves_count</code> is recorded before purchase and the
+                            rating after it. Nothing separates them, so the most marketed
+                            product reads as the best product.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right: the answer, and who it serves -->
+            <div class="col" style="flex: 0.85;">
+                <div class="card blush" style="flex: none;">
+                    <div class="kicker" style="color: var(--red);" data-edit>What this project builds</div>
+                    <p style="font-size: 23px; line-height: 1.5; margin-top: 14px;" data-edit>
+                        A warehouse where every one of those comparisons is a single
+                        query, and a dashboard where the filters <em>are</em> the query —
+                        not a view applied after the fact.
+                    </p>
+                </div>
+
+                <div style="margin-top: 42px;">
+                    <div class="kicker" style="color: var(--muted);" data-edit>Who it is for</div>
+                    <div style="display: flex; flex-wrap: wrap; gap: 14px; margin-top: 20px;">
+                        <span class="chip" data-edit>Shoppers comparing products</span>
+                        <span class="chip" data-edit>Brand &amp; category managers</span>
+                        <span class="chip" data-edit>Merchandising and buying</span>
+                        <span class="chip" data-edit>Analysts and data teams</span>
+                    </div>
+                    <p style="font-size: 18px; line-height: 1.55; color: var(--muted); margin-top: 24px;" data-edit>
+                        The same five questions serve all four: who rates best, what is
+                        overhyped, whether price predicts satisfaction, whether skin
+                        profile changes the answer, and how any of it moves over time.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="foot"><span>Sephora Skincare Reviews · Data Engineering Capstone</span><span><b>02</b> / 09</span></div>
+</section>
+
+<!-- =======================================================================
+     SLIDE 3 — The source data. Every number here is measured, not estimated.
+     ======================================================================= -->
+<section class="slide" aria-label="Data source">
+    <div class="inner">
+        <div class="reveal">
+            <div class="kicker" data-edit>The data source</div>
+            <h2 data-edit>Sephora products and skincare reviews</h2>
+            <p class="lede" data-edit>
+                A public Kaggle dataset: one product catalogue and five review files,
+                covering fifteen years of reviews from August 2008 to March 2023.
+            </p>
+            <div class="rule"></div>
+        </div>
+
+        <div class="body reveal" style="flex-direction: column; gap: 26px;">
+            <!-- Raw shape -->
+            <div class="statgrid" style="grid-template-columns: repeat(5, 1fr);">
+                <div class="stat"><div class="v">1,094,411</div><div class="k">raw review rows,<br>across 5 CSV files</div></div>
+                <div class="stat"><div class="v">8,494</div><div class="k">products,<br>27 columns each</div></div>
+                <div class="stat"><div class="v">304</div><div class="k">brands, verified<br>1:1 with brand_id</div></div>
+                <div class="stat"><div class="v">503,216</div><div class="k">distinct review<br>authors</div></div>
+                <div class="stat"><div class="v">174</div><div class="k">category triples<br>(not a hierarchy)</div></div>
+            </div>
+
+            <!-- What profiling found, and what cleaning did about it -->
+            <div style="display: flex; gap: 26px; flex: 1; min-height: 0;">
+                <div class="card" style="flex: 1.25;">
+                    <div class="kicker" style="color: var(--muted);" data-edit>What profiling found — 14 checks</div>
+                    <div class="points" style="gap: 15px; margin-top: 20px;">
+                        <div class="point"><div class="n">·</div><div><p style="color: var(--ink); font-size: 19px;" data-edit>
+                            <b>1,040 duplicate reviews</b> on (author, product, date) — but 5,525 on
+                            (author, product), so the difference is legitimate re-reviews.</p></div></div>
+                        <div class="point"><div class="n">·</div><div><p style="color: var(--ink); font-size: 19px;" data-edit>
+                            <b>Two spellings of one colour</b>: <code>Grey</code> and <code>gray</code>, 4,859 rows.</p></div></div>
+                        <div class="point"><div class="n">·</div><div><p style="color: var(--ink); font-size: 19px;" data-edit>
+                            <b>A sentinel posing as a value</b>: <code>notSureST</code> is “not sure”, not a skin tone.</p></div></div>
+                        <div class="point"><div class="n">·</div><div><p style="color: var(--ink); font-size: 19px;" data-edit>
+                            <b>Nulls that are undefined, not missing</b>: <code>helpfulness</code> is null exactly
+                            when feedback count is 0 — so it is never imputed.</p></div></div>
+                        <div class="point"><div class="n">·</div><div><p style="color: var(--ink); font-size: 19px;" data-edit>
+                            <b>A usable idempotency key</b>: <code>(source_row_id, product_id)</code> collides
+                            0 times across all five files, so re-running a load cannot duplicate a row.</p></div></div>
+                        <div class="point"><div class="n">·</div><div><p style="color: var(--ink); font-size: 19px;" data-edit>
+                            <b>Nothing orphaned</b>: 0 reviews point at a product outside the catalogue,
+                            and 0 rows disagree on the feedback split.</p></div></div>
+                    </div>
+                </div>
+
+                <div class="card black" style="flex: 0.75; display: flex; flex-direction: column; justify-content: center;">
+                    <div class="kicker" data-edit>After cleaning</div>
+                    <div style="font-family: var(--font-display); font-size: 72px; font-weight: 600; line-height: 1; margin-top: 18px;">1,093,371</div>
+                    <p style="font-size: 19px; line-height: 1.5; margin-top: 16px;" data-edit>
+                        reviews carried forward — 1,040 duplicates removed, 1,030,753 cells
+                        whitespace-trimmed, 0 unparseable dates, and <b style="color:#fff;">not one column
+                        dropped</b>: every source column still reaches the raw layer.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="foot"><span>Sephora Skincare Reviews · Data Engineering Capstone</span><span><b>03</b> / 09</span></div>
+</section>
+
+<!-- =======================================================================
+     SLIDE 4 — OLTP. Diagram carries the weight; the column explains why.
+     ======================================================================= -->
+<section class="slide" aria-label="OLTP schema">
+    <div class="inner">
+        <div class="reveal">
+            <div class="kicker" data-edit>Transactional layer · sephora_oltp</div>
+            <h2 data-edit>A 3NF model, in three deliberate layers</h2>
+            <div class="rule"></div>
+        </div>
+
+        <div class="body reveal">
+            <div class="col" style="flex: 2;">
+                <div class="figure"><img src="assets/oltp_er.svg" alt="Entity relationship diagram of the 3NF schema"></div>
+                <div class="figcap" data-edit>9 tables in the <span class="mono">3nf</span> schema. Row counts are measured after load, not estimated.</div>
+            </div>
+
+            <div class="col" style="flex: 1;">
+                <div class="points">
+                    <div class="point">
+                        <div class="n">01</div>
+                        <div>
+                            <h4 data-edit>raw → 3nf → staging</h4>
+                            <p data-edit><code>raw</code> mirrors the CSVs 1:1 for traceability, <code>3nf</code>
+                            enforces the relationships, <code>staging</code> flattens the validated
+                            entities so the ETL reads one predictable shape.</p>
+                        </div>
+                    </div>
+                    <div class="point">
+                        <div class="n">02</div>
+                        <div>
+                            <h4 data-edit>Two transitive dependencies removed</h4>
+                            <p data-edit><code>brand_name</code> depends on <code>brand_id</code>, not on the product;
+                            the category triple likewise. Both move off <code>product</code> and are
+                            reached by foreign key — that is the 3NF change.</p>
+                        </div>
+                    </div>
+                    <div class="point">
+                        <div class="n">03</div>
+                        <div>
+                            <h4 data-edit>Reviewer attributes live on the review</h4>
+                            <p data-edit>Skin tone, skin type, eye and hair colour were recorded per
+                            review, so they sit on <code>review</code> as lookups. <code>author</code> holds
+                            identity and nothing else.</p>
+                        </div>
+                    </div>
+                    <div class="point">
+                        <div class="n">04</div>
+                        <div>
+                            <h4 data-edit>Zero row gap, end to end</h4>
+                            <p data-edit>1,093,371 reviews in raw, in 3nf, and in staging. All six
+                            integrity checks return 0.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="foot"><span>Sephora Skincare Reviews · Data Engineering Capstone</span><span><b>04</b> / 09</span></div>
+</section>
+
+<!-- =======================================================================
+     SLIDE 5 — The warehouse star schema.
+     ======================================================================= -->
+<section class="slide" aria-label="Star schema">
+    <div class="inner">
+        <div class="reveal">
+            <div class="kicker" data-edit>Analytical layer · sephora_dw</div>
+            <h2 data-edit>One fact, five dimensions, one grain</h2>
+            <div class="rule"></div>
+        </div>
+
+        <div class="body reveal">
+            <div class="col" style="flex: 1.45;">
+                <div class="figure"><img src="assets/star_schema.svg" alt="Star schema: fact_reviews with five dimensions"></div>
+                <div class="figcap" data-edit>Grain of <span class="mono">fact_reviews</span>: one row per review. Four indexed foreign keys, no others.</div>
+            </div>
+
+            <div class="col" style="flex: 1;">
+                <div class="points">
+                    <div class="point">
+                        <div class="n">01</div>
+                        <div>
+                            <h4 data-edit>dim_customer carries identity only</h4>
+                            <p data-edit>22,503 authors (4.47%) recorded more than one profile across
+                            their reviews, covering 149,788 reviews. A profile held on a
+                            per-author dimension would mis-tag one review in seven, silently.</p>
+                        </div>
+                    </div>
+                    <div class="point">
+                        <div class="n">02</div>
+                        <div>
+                            <h4 data-edit>dim_reviewer_profile is a junk dimension</h4>
+                            <p data-edit>The four correlated, low-cardinality attributes bundle into
+                            1,896 rows at review grain — where they were actually recorded.</p>
+                        </div>
+                    </div>
+                    <div class="point">
+                        <div class="n">03</div>
+                        <div>
+                            <h4 data-edit>Category flattened, brand snowflaked</h4>
+                            <p data-edit>All three category levels are plain columns on
+                            <code>dim_product</code>, because the dashboard groups on them constantly.
+                            Brand stays a table: “rating by brand” is a business question in
+                            its own right.</p>
+                        </div>
+                    </div>
+                    <div class="point">
+                        <div class="n">04</div>
+                        <div>
+                            <h4 data-edit>Idempotent by construction</h4>
+                            <p data-edit>Every load targets <code>UNIQUE(source_row_id, product_id)</code> with
+                            <code>ON CONFLICT DO NOTHING</code>. Re-running a full load offered
+                            1,043,868 rows and inserted 0.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="foot"><span>Sephora Skincare Reviews · Data Engineering Capstone</span><span><b>05</b> / 09</span></div>
+</section>
+
+<!-- =======================================================================
+     SLIDE 6 — Architecture. Wide diagram on top, four points beneath.
+     ======================================================================= -->
+<section class="slide" aria-label="Architecture">
+    <div class="inner">
+        <div class="reveal">
+            <div class="kicker" data-edit>Architecture</div>
+            <h2 data-edit>From raw CSV to a live dashboard</h2>
+            <div class="rule"></div>
+        </div>
+
+        <div class="body reveal" style="flex-direction: column; gap: 26px; margin-top: 30px;">
+            <div class="figure" style="padding: 16px 22px;">
+                <img src="assets/architecture.svg" alt="End-to-end architecture from CSV through OLTP and the warehouse to Streamlit">
+            </div>
+
+            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 22px; flex: none;">
+                <div>
+                    <h4 style="font-size: 21px; font-weight: 600;" data-edit>Two physical databases</h4>
+                    <p style="font-size: 17px; line-height: 1.5; color: var(--muted); margin-top: 8px;" data-edit>
+                        <span class="mono">sephora_oltp</span> and <span class="mono">sephora_dw</span> are separate, so the
+                        normalized model and the dimensional one cannot quietly become one thing.</p>
+                </div>
+                <div>
+                    <h4 style="font-size: 21px; font-weight: 600;" data-edit>Views are the read surface</h4>
+                    <p style="font-size: 17px; line-height: 1.5; color: var(--muted); margin-top: 8px;" data-edit>
+                        The dashboard never reads a table. 11 SQL views sit between it and the
+                        warehouse, so a definition changes in one place.</p>
+                </div>
+                <div>
+                    <h4 style="font-size: 21px; font-weight: 600;" data-edit>Three named load modes</h4>
+                    <p style="font-size: 17px; line-height: 1.5; color: var(--muted); margin-top: 8px;" data-edit>
+                        <span class="mono">full</span>, <span class="mono">historical</span> and watermark-driven
+                        <span class="mono">incremental</span> share one implementation and one set of quality checks.</p>
+                </div>
+                <div>
+                    <h4 style="font-size: 21px; font-weight: 600;" data-edit>Nothing is dropped silently</h4>
+                    <p style="font-size: 17px; line-height: 1.5; color: var(--muted); margin-top: 8px;" data-edit>
+                        Every dropped row is counted against a named reason; an unexplained gap
+                        raises <span class="mono">ReconciliationError</span> and stops the run.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="foot"><span>Sephora Skincare Reviews · Data Engineering Capstone</span><span><b>06</b> / 09</span></div>
+</section>
+
+<!-- =======================================================================
+     SLIDE 7 — Airflow, with the real graph from the running instance.
+     ======================================================================= -->
+<section class="slide" aria-label="Airflow DAG">
+    <div class="inner">
+        <div class="reveal">
+            <div class="kicker" data-edit>Orchestration · Apache Airflow 3.3</div>
+            <h2 data-edit>15 tasks, and one that must not report success</h2>
+            <div class="rule"></div>
+        </div>
+
+        <div class="body reveal" style="flex-direction: column; gap: 24px; margin-top: 30px;">
+            <div class="figure dark" style="flex: none; height: 430px; padding: 18px;">
+                <img src="assets/dag.png" alt="The 15-task Airflow DAG graph as rendered by Airflow">
+            </div>
+            <div class="figcap" style="margin-top: -12px;" data-edit>
+                <span class="mono">dags/sephora_dw_pipeline_staged.py</span> — 15 tasks, 21 edges, as rendered by the running Airflow instance.
+            </div>
+
+            <div style="display: flex; gap: 24px; flex: none;">
+                <div class="card" style="flex: 1;">
+                    <h4 style="font-size: 22px; font-weight: 600;" data-edit>Dimensions in parallel, the fact path staged</h4>
+                    <p style="font-size: 18px; line-height: 1.55; color: var(--muted); margin-top: 10px;" data-edit>
+                        Date, brand, customer and reviewer-profile load concurrently; product waits
+                        on brand for its foreign key. The fact is then handled in four separate
+                        tasks — extract, transform, quality gate, load — so a failure names
+                        itself instead of pointing at one opaque step.</p>
+                </div>
+                <div class="card" style="flex: 1;">
+                    <h4 style="font-size: 22px; font-weight: 600;" data-edit>Cleanup is a teardown, not a leaf</h4>
+                    <p style="font-size: 18px; line-height: 1.55; color: var(--muted); margin-top: 10px;" data-edit>
+                        Cleanup runs after failures so staging is never stranded — which had made it
+                        the only leaf, and Airflow reads run state from leaves, so a failed extract
+                        reported a <b style="color: var(--ink);">green run over an empty warehouse</b>.
+                        Marking it a teardown excludes it from run state and restores
+                        <span class="mono">load_fact</span> as the leaf.</p>
+                </div>
+                <div class="card black" style="flex: 0.82;">
+                    <div class="kicker" data-edit>Verified, not assumed</div>
+                    <p style="font-size: 18px; line-height: 1.6; margin-top: 12px;" data-edit>
+                        Historical run green in <b style="color:#fff;">134s</b>; incremental restored
+                        49,503 rows in <b style="color:#fff;">22s</b>. Then a failure was
+                        <em>injected</em>: 3 tasks upstream-failed, cleanup went green, and the run
+                        went <b style="color: var(--red);">red</b> — which also exposed a race that
+                        had stranded 513,606 staging rows.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="foot"><span>Sephora Skincare Reviews · Data Engineering Capstone</span><span><b>07</b> / 09</span></div>
+</section>
+
+<!-- =======================================================================
+     SLIDE 8 — Design decisions. Four, each with its cost stated.
+     ======================================================================= -->
+<section class="slide" aria-label="Design decisions">
+    <div class="inner">
+        <div class="reveal">
+            <div class="kicker" data-edit>Design decisions</div>
+            <h2 data-edit>Four choices worth defending</h2>
+            <p class="lede" data-edit>
+                Twenty-four decisions are logged in <span class="mono">docs/09_decision_log.md</span>, each with
+                the measurement behind it. These four changed the shape of the project.
+            </p>
+            <div class="rule"></div>
+        </div>
+
+        <div class="body reveal" style="display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 26px;">
+            <div class="card center">
+                <div class="kicker" style="color: var(--red);">D2 · Modelling</div>
+                <h4 style="font-size: 27px; font-weight: 600; margin-top: 12px;" data-edit>A junk dimension, not a profile on the customer</h4>
+                <p style="font-size: 18px; line-height: 1.55; color: var(--muted); margin-top: 12px;" data-edit>
+                    The obvious design hangs skin tone and type off <span class="mono">dim_customer</span>. Measured:
+                    4.47% of authors changed at least one attribute, across 13.69% of reviews — so
+                    that design mis-tags one review in seven, with no constraint violated and
+                    nothing downstream to notice.
+                    <b style="color: var(--ink);">Cost: one extra join.</b></p>
+            </div>
+
+            <div class="card center">
+                <div class="kicker" style="color: var(--red);">D24 · Orchestration</div>
+                <h4 style="font-size: 27px; font-weight: 600; margin-top: 12px;" data-edit>A failed run must look failed</h4>
+                <p style="font-size: 18px; line-height: 1.55; color: var(--muted); margin-top: 12px;" data-edit>
+                    An <span class="mono">all_done</span> cleanup task is the standard advice, and it silently
+                    turned every failure green. The fix is a teardown, which Airflow excludes from
+                    run-state calculation — the same guarantee in
+                    <b style="color: var(--ink);">15 tasks and 21 edges</b> instead of 16 and 33.</p>
+            </div>
+
+            <div class="card center">
+                <div class="kicker" style="color: var(--red);">D11 · Warehouse</div>
+                <h4 style="font-size: 27px; font-weight: 600; margin-top: 12px;" data-edit>No brand_key on the fact table</h4>
+                <p style="font-size: 18px; line-height: 1.55; color: var(--muted); margin-top: 12px;" data-edit>
+                    Brand is functionally determined by product, so a copy on a 1.09M-row fact adds
+                    no information and creates a way for the two to disagree after a bad load.
+                    Brand analysis joins through <span class="mono">dim_product</span>.
+                    <b style="color: var(--ink);">Redundancy is only worth it when it buys something.</b></p>
+            </div>
+
+            <div class="card center">
+                <div class="kicker" style="color: var(--red);">D19 &amp; D21 · ETL</div>
+                <h4 style="font-size: 27px; font-weight: 600; margin-top: 12px;" data-edit>Reconcile every row; gate, don’t fix</h4>
+                <p style="font-size: 18px; line-height: 1.55; color: var(--muted); margin-top: 12px;" data-edit>
+                    Every dropped row is counted against a named reason, zeros included, and an
+                    unexplained gap raises. The quality layer only ever raises or warns — it never
+                    repairs data, because a check that quietly fixes its own finding is a check
+                    nobody can audit.</p>
+            </div>
+        </div>
+    </div>
+    <div class="foot"><span>Sephora Skincare Reviews · Data Engineering Capstone</span><span><b>08</b> / 09</span></div>
+</section>
+
+<!-- =======================================================================
+     SLIDE 9 — The dashboard result. Two live charts, cropped from the app.
+     ======================================================================= -->
+<section class="slide" aria-label="Dashboard finding">
+    <div class="inner">
+        <div class="reveal">
+            <div class="kicker" data-edit>The dashboard · BQ3</div>
+            <h2 data-edit>Price does not predict satisfaction — not linearly</h2>
+            <div class="rule"></div>
+        </div>
+
+        <div class="body reveal" style="gap: 30px;">
+            <!-- Cropped to the plot area from the running dashboard, so the charts
+                 read at size; the card headings are restated here as slide labels. -->
+            <!-- The two figures are pinned to the same aspect ratio so the cards
+                 match exactly; the source crops differ by a couple of percent,
+                 which showed as a ragged bottom edge. The note sits beneath both
+                 rather than in the bullet column, so the space under the charts
+                 carries something instead of reading as a hole. -->
+            <div class="col" style="flex: 2.2; justify-content: flex-start; gap: 26px;">
+                <div style="display: flex; gap: 30px; align-items: flex-start;">
+                    <div style="flex: 1; min-width: 0;">
+                        <h4 style="font-size: 22px; font-weight: 600; margin-bottom: 14px;" data-edit>Average rating by price band</h4>
+                        <div class="figure dark" style="flex: none; aspect-ratio: 3 / 2;"><img src="assets/chart_price_rating.png" alt="Average rating by price band, peaking at the $50-100 band"></div>
+                    </div>
+                    <div style="flex: 1; min-width: 0;">
+                        <h4 style="font-size: 22px; font-weight: 600; margin-bottom: 14px;" data-edit>Rating spread — lower means more agreement</h4>
+                        <div class="figure dark" style="flex: none; aspect-ratio: 3 / 2;"><img src="assets/chart_price_spread.png" alt="Standard deviation of rating by price band, tightest at the $50-100 band"></div>
+                    </div>
+                </div>
+                <div class="card blush" style="flex: none; padding: 24px 28px;">
+                    <p style="font-size: 19px; line-height: 1.5;" data-edit>
+                        Both charts are live reads. Every filter on the dashboard is a
+                        <b>SQL parameter</b>, not a dataframe filter — a client-side filter
+                        would look identical on screen and be a different claim.</p>
+                </div>
+            </div>
+
+            <div class="col" style="flex: 0.78; justify-content: flex-start;">
+                <div class="points" style="gap: 20px;">
+                    <div class="point">
+                        <div class="n">·</div>
+                        <div>
+                            <h4 data-edit>An inverted U, not a straight line</h4>
+                            <p data-edit>Ratings climb from <b style="color: var(--ink);">4.238</b> under $15 to
+                            <b style="color: var(--ink);">4.334</b> at $50–100, then fall back to 4.271 above $100.</p>
+                        </div>
+                    </div>
+                    <div class="point">
+                        <div class="n">·</div>
+                        <div>
+                            <h4 data-edit>Agreement peaks in the same band</h4>
+                            <p data-edit>Rating spread narrows to <b style="color: var(--ink);">1.100</b> at
+                            $50–100 and widens again above it. $50–100 is the sweet spot on
+                            both measures — best rated and most agreed upon.</p>
+                        </div>
+                    </div>
+                    <div class="point">
+                        <div class="n">·</div>
+                        <div>
+                            <h4 data-edit>Lines, not bars — on purpose</h4>
+                            <p data-edit>The whole spread is a tenth of a star, so the axis must be
+                            truncated. A truncated axis under bars misleads, because bar length
+                            is read from zero.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="foot"><span>Sephora Skincare Reviews · Data Engineering Capstone</span><span><b>09</b> / 09</span></div>
+</section>
+
+</main>
+</div>
+
+<script>
+/* ===========================================================================
+   SLIDE CONTROLLER
+   Scales the whole 1920x1080 stage to fit the window; never reflows content.
+   =========================================================================== */
+class SlidePresentation {
+    constructor() {
+        this.slides = [...document.querySelectorAll('.slide')];
+        this.stage = document.getElementById('deckStage');
+        this.progress = document.getElementById('progress');
+        this.current = 0;
+        this.setupStageScale();
+        this.setupKeyboardNav();
+        this.setupTouchNav();
+        this.setupWheelNav();
+        // #3 opens on slide 3, so a slide can be linked to directly.
+        const fromHash = parseInt((location.hash || '').replace('#', ''), 10);
+        this.show(Number.isFinite(fromHash) ? fromHash - 1 : 0);
+        window.addEventListener('hashchange', () => {
+            const n = parseInt((location.hash || '').replace('#', ''), 10);
+            if (Number.isFinite(n) && n - 1 !== this.current) this.show(n - 1);
+        });
+    }
+
+    /* One transform on the stage. Letterboxes rather than re-laying out. */
+    setupStageScale() {
+        const scale = () => {
+            const f = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
+            const x = (window.innerWidth - 1920 * f) / 2;
+            const y = (window.innerHeight - 1080 * f) / 2;
+            this.stage.style.transform = `translate(${x}px, ${y}px) scale(${f})`;
+        };
+        scale();
+        window.addEventListener('resize', scale);
+    }
+
+    setupKeyboardNav() {
+        document.addEventListener('keydown', (e) => {
+            if (document.body.classList.contains('editing') &&
+                e.target.getAttribute('contenteditable')) return;
+            if (['ArrowRight', 'ArrowDown', ' ', 'PageDown'].includes(e.key)) {
+                e.preventDefault(); this.next();
+            } else if (['ArrowLeft', 'ArrowUp', 'PageUp'].includes(e.key)) {
+                e.preventDefault(); this.prev();
+            } else if (e.key === 'Home') { this.show(0); }
+            else if (e.key === 'End') { this.show(this.slides.length - 1); }
+        });
+    }
+
+    setupTouchNav() {
+        let x0 = null;
+        document.addEventListener('touchstart', (e) => { x0 = e.touches[0].clientX; }, {passive: true});
+        document.addEventListener('touchend', (e) => {
+            if (x0 === null) return;
+            const dx = e.changedTouches[0].clientX - x0;
+            if (Math.abs(dx) > 60) { dx < 0 ? this.next() : this.prev(); }
+            x0 = null;
+        }, {passive: true});
+    }
+
+    setupWheelNav() {
+        let locked = false;
+        document.addEventListener('wheel', (e) => {
+            if (locked || Math.abs(e.deltaY) < 30) return;
+            locked = true;
+            e.deltaY > 0 ? this.next() : this.prev();
+            setTimeout(() => { locked = false; }, 700);
+        }, {passive: true});
+    }
+
+    next() { this.show(this.current + 1); }
+    prev() { this.show(this.current - 1); }
+
+    show(i) {
+        this.current = Math.max(0, Math.min(i, this.slides.length - 1));
+        this.slides.forEach((s, n) => {
+            s.classList.toggle('active', n === this.current);
+            s.classList.toggle('visible', n === this.current);
+        });
+        this.progress.style.width =
+            ((this.current + 1) / this.slides.length * 100) + '%';
+        if (history.replaceState) {
+            history.replaceState(null, '', '#' + (this.current + 1));
+        }
+    }
+}
+
+const deck = new SlidePresentation();
+
+/* ===========================================================================
+   INLINE TEXT EDITING
+   Hover the top-left corner or press E. Edits persist in localStorage;
+   Ctrl+S downloads a copy of the deck with the edits baked in.
+   =========================================================================== */
+class InlineEditor {
+    constructor() {
+        this.isActive = false;
+        this.fields = [...document.querySelectorAll('[data-edit]')];
+        this.fields.forEach((el, i) => { el.dataset.editId = 'f' + i; });
+        this.restore();
+        this.fields.forEach((el) => {
+            el.addEventListener('input', () => this.save());
+        });
+    }
+
+    toggleEditMode() {
+        this.isActive = !this.isActive;
+        document.body.classList.toggle('editing', this.isActive);
+        this.fields.forEach((el) => {
+            el.contentEditable = this.isActive ? 'true' : 'false';
+        });
+        document.getElementById('editToggle').classList.toggle('active', this.isActive);
+    }
+
+    save() {
+        const data = {};
+        this.fields.forEach((el) => { data[el.dataset.editId] = el.innerHTML; });
+        try { localStorage.setItem('sephoraDeckEdits', JSON.stringify(data)); } catch (e) {}
+    }
+
+    restore() {
+        let data;
+        try { data = JSON.parse(localStorage.getItem('sephoraDeckEdits') || '{}'); }
+        catch (e) { return; }
+        this.fields.forEach((el) => {
+            if (data[el.dataset.editId] !== undefined) el.innerHTML = data[el.dataset.editId];
+        });
+    }
+
+    /* Export the live DOM, minus the editing state, as a downloadable file. */
+    export() {
+        const clone = document.documentElement.cloneNode(true);
+        clone.querySelectorAll('[contenteditable]').forEach((el) => {
+            el.removeAttribute('contenteditable');
+        });
+        clone.querySelector('body').classList.remove('editing');
+        const blob = new Blob(['<!DOCTYPE html>\n' + clone.outerHTML],
+                              {type: 'text/html'});
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'sephora_pipeline_deck.html';
+        a.click();
+    }
+}
+
+const editor = new InlineEditor();
+
+/* Three ways in: the button, the corner hotzone, and the E key. */
+const hotzone = document.querySelector('.edit-hotzone');
+const editToggle = document.getElementById('editToggle');
+let hideTimeout = null;
+
+editToggle.addEventListener('click', () => editor.toggleEditMode());
+hotzone.addEventListener('click', () => editor.toggleEditMode());
+
+hotzone.addEventListener('mouseenter', () => {
+    clearTimeout(hideTimeout);
+    editToggle.classList.add('show');
+});
+hotzone.addEventListener('mouseleave', () => {
+    hideTimeout = setTimeout(() => {
+        if (!editor.isActive) editToggle.classList.remove('show');
+    }, 400);
+});
+editToggle.addEventListener('mouseenter', () => clearTimeout(hideTimeout));
+editToggle.addEventListener('mouseleave', () => {
+    hideTimeout = setTimeout(() => {
+        if (!editor.isActive) editToggle.classList.remove('show');
+    }, 400);
+});
+
+document.addEventListener('keydown', (e) => {
+    if ((e.key === 'e' || e.key === 'E') && !e.target.getAttribute('contenteditable')) {
+        editor.toggleEditMode();
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        editor.export();
+    }
+});
+</script>
+</body>
+</html>

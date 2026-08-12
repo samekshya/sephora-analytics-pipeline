@@ -1,0 +1,119 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="1082" viewBox="0 0 1440 1082" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif">
+<rect width="1440" height="1082" fill="#FFFFFF"/>
+<defs>
+  <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7"
+          markerHeight="7" orient="auto-start-reverse">
+    <path d="M0,1 L9,5 L0,9 z" fill="#D6001C"/>
+  </marker>
+  <marker id="arrow-light" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7"
+          markerHeight="7" orient="auto-start-reverse">
+    <path d="M0,1 L9,5 L0,9 z" fill="#F5EFED"/>
+  </marker>
+  <marker id="dot" viewBox="0 0 8 8" refX="4" refY="4" markerWidth="5"
+          markerHeight="5">
+    <circle cx="4" cy="4" r="3.4" fill="#D6001C"/>
+  </marker>
+</defs>
+<rect x="590" y="324" width="380" height="374" rx="14" ry="14" fill="#2A211E" stroke="#2A211E" stroke-width="2"/>
+<path d="M590,376 L590,338 Q590,324 604,324 L956,324 Q970,324 970,338 L970,376 Z" fill="#D6001C"/>
+<text x="610" y="358" font-family="'Cascadia Mono',Consolas,'SF Mono',Menlo,monospace" font-size="19.5" fill="#FFFFFF" text-anchor="start" font-weight="600">dw.fact_reviews</text>
+<text x="610" y="409" font-family="'Cascadia Mono',Consolas,'SF Mono',Menlo,monospace" font-size="16.5" fill="#F5EFED" text-anchor="start" font-weight="600">review_key</text>
+<text x="950" y="409" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12.5" fill="#D6001C" text-anchor="end" font-weight="700" letter-spacing="0.6">PK</text>
+<text x="610" y="439" font-family="'Cascadia Mono',Consolas,'SF Mono',Menlo,monospace" font-size="16.5" fill="#B9A9A4" text-anchor="start" font-weight="400">source_row_id + product_id</text>
+<text x="950" y="439" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12.5" fill="#B9A9A4" text-anchor="end" font-weight="700" letter-spacing="0.6">UQ</text>
+<text x="610" y="469" font-family="'Cascadia Mono',Consolas,'SF Mono',Menlo,monospace" font-size="16.5" fill="#B9A9A4" text-anchor="start" font-weight="400">product_key</text>
+<text x="950" y="469" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12.5" fill="#B9A9A4" text-anchor="end" font-weight="700" letter-spacing="0.6">FK</text>
+<text x="610" y="499" font-family="'Cascadia Mono',Consolas,'SF Mono',Menlo,monospace" font-size="16.5" fill="#B9A9A4" text-anchor="start" font-weight="400">customer_key</text>
+<text x="950" y="499" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12.5" fill="#B9A9A4" text-anchor="end" font-weight="700" letter-spacing="0.6">FK</text>
+<text x="610" y="529" font-family="'Cascadia Mono',Consolas,'SF Mono',Menlo,monospace" font-size="16.5" fill="#B9A9A4" text-anchor="start" font-weight="400">reviewer_profile_key</text>
+<text x="950" y="529" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12.5" fill="#B9A9A4" text-anchor="end" font-weight="700" letter-spacing="0.6">FK</text>
+<text x="610" y="559" font-family="'Cascadia Mono',Consolas,'SF Mono',Menlo,monospace" font-size="16.5" fill="#B9A9A4" text-anchor="start" font-weight="400">date_key</text>
+<text x="950" y="559" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12.5" fill="#B9A9A4" text-anchor="end" font-weight="700" letter-spacing="0.6">FK</text>
+<text x="610" y="589" font-family="'Cascadia Mono',Consolas,'SF Mono',Menlo,monospace" font-size="16.5" fill="#B9A9A4" text-anchor="start" font-weight="400">rating, is_recommended</text>
+<text x="610" y="619" font-family="'Cascadia Mono',Consolas,'SF Mono',Menlo,monospace" font-size="16.5" fill="#B9A9A4" text-anchor="start" font-weight="400">helpfulness, feedback</text>
+<text x="610" y="649" font-family="'Cascadia Mono',Consolas,'SF Mono',Menlo,monospace" font-size="16.5" fill="#B9A9A4" text-anchor="start" font-weight="400">review_length, submission_date</text>
+<line x1="610" y1="662" x2="950" y2="662" stroke="#2A211E" stroke-width="1"/>
+<text x="610" y="685" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="14.5" fill="#FF6B7F" text-anchor="start" font-weight="600">1,093,371 rows</text>
+<text x="950" y="685" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="13" fill="#B9A9A4" text-anchor="end" font-weight="400" font-style="italic">one row per review</text>
+<rect x="210" y="324.0" width="300" height="374" rx="14" ry="14" fill="#FFFFFF" stroke="#E0D5D1" stroke-width="1.5"/>
+<path d="M210,376.0 L210,338.0 Q210,324.0 224,324.0 L496,324.0 Q510,324.0 510,338.0 L510,376.0 Z" fill="#17110F"/>
+<text x="230" y="358.0" font-family="'Cascadia Mono',Consolas,'SF Mono',Menlo,monospace" font-size="19.5" fill="#FFFFFF" text-anchor="start" font-weight="600">dw.dim_product</text>
+<text x="230" y="409.0" font-family="'Cascadia Mono',Consolas,'SF Mono',Menlo,monospace" font-size="16.5" fill="#17110F" text-anchor="start" font-weight="600">product_key</text>
+<text x="490" y="409.0" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12.5" fill="#D6001C" text-anchor="end" font-weight="700" letter-spacing="0.6">PK</text>
+<text x="230" y="439.0" font-family="'Cascadia Mono',Consolas,'SF Mono',Menlo,monospace" font-size="16.5" fill="#7C6F6A" text-anchor="start" font-weight="400">product_id</text>
+<text x="490" y="439.0" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12.5" fill="#7C6F6A" text-anchor="end" font-weight="700" letter-spacing="0.6">UQ</text>
+<text x="230" y="469.0" font-family="'Cascadia Mono',Consolas,'SF Mono',Menlo,monospace" font-size="16.5" fill="#7C6F6A" text-anchor="start" font-weight="400">brand_key</text>
+<text x="490" y="469.0" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12.5" fill="#7C6F6A" text-anchor="end" font-weight="700" letter-spacing="0.6">FK</text>
+<text x="230" y="499.0" font-family="'Cascadia Mono',Consolas,'SF Mono',Menlo,monospace" font-size="16.5" fill="#7C6F6A" text-anchor="start" font-weight="400">product_name</text>
+<text x="230" y="529.0" font-family="'Cascadia Mono',Consolas,'SF Mono',Menlo,monospace" font-size="16.5" fill="#7C6F6A" text-anchor="start" font-weight="400">primary_category</text>
+<text x="230" y="559.0" font-family="'Cascadia Mono',Consolas,'SF Mono',Menlo,monospace" font-size="16.5" fill="#7C6F6A" text-anchor="start" font-weight="400">secondary_category</text>
+<text x="230" y="589.0" font-family="'Cascadia Mono',Consolas,'SF Mono',Menlo,monospace" font-size="16.5" fill="#7C6F6A" text-anchor="start" font-weight="400">tertiary_category</text>
+<text x="230" y="619.0" font-family="'Cascadia Mono',Consolas,'SF Mono',Menlo,monospace" font-size="16.5" fill="#7C6F6A" text-anchor="start" font-weight="400">price_usd, price_band</text>
+<text x="230" y="649.0" font-family="'Cascadia Mono',Consolas,'SF Mono',Menlo,monospace" font-size="16.5" fill="#7C6F6A" text-anchor="start" font-weight="400">loves_count, flags</text>
+<line x1="230" y1="662.0" x2="490" y2="662.0" stroke="#E0D5D1" stroke-width="1"/>
+<text x="230" y="685.0" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="14.5" fill="#D6001C" text-anchor="start" font-weight="600">8,494 rows</text>
+<rect x="60" y="772.0" width="240" height="194" rx="14" ry="14" fill="#FFFFFF" stroke="#E0D5D1" stroke-width="1.5"/>
+<path d="M60,824.0 L60,786.0 Q60,772.0 74,772.0 L286,772.0 Q300,772.0 300,786.0 L300,824.0 Z" fill="#17110F"/>
+<text x="80" y="806.0" font-family="'Cascadia Mono',Consolas,'SF Mono',Menlo,monospace" font-size="19.5" fill="#FFFFFF" text-anchor="start" font-weight="600">dw.dim_brand</text>
+<text x="80" y="857.0" font-family="'Cascadia Mono',Consolas,'SF Mono',Menlo,monospace" font-size="16.5" fill="#17110F" text-anchor="start" font-weight="600">brand_key</text>
+<text x="280" y="857.0" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12.5" fill="#D6001C" text-anchor="end" font-weight="700" letter-spacing="0.6">PK</text>
+<text x="80" y="887.0" font-family="'Cascadia Mono',Consolas,'SF Mono',Menlo,monospace" font-size="16.5" fill="#7C6F6A" text-anchor="start" font-weight="400">brand_id</text>
+<text x="280" y="887.0" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12.5" fill="#7C6F6A" text-anchor="end" font-weight="700" letter-spacing="0.6">UQ</text>
+<text x="80" y="917.0" font-family="'Cascadia Mono',Consolas,'SF Mono',Menlo,monospace" font-size="16.5" fill="#7C6F6A" text-anchor="start" font-weight="400">brand_name</text>
+<line x1="80" y1="930.0" x2="280" y2="930.0" stroke="#E0D5D1" stroke-width="1"/>
+<text x="80" y="953.0" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="14.5" fill="#D6001C" text-anchor="start" font-weight="600">304 rows</text>
+<rect x="630.0" y="60" width="300" height="164" rx="14" ry="14" fill="#FFFFFF" stroke="#E0D5D1" stroke-width="1.5"/>
+<path d="M630.0,112 L630.0,74 Q630.0,60 644.0,60 L916.0,60 Q930.0,60 930.0,74 L930.0,112 Z" fill="#17110F"/>
+<text x="650.0" y="94" font-family="'Cascadia Mono',Consolas,'SF Mono',Menlo,monospace" font-size="19.5" fill="#FFFFFF" text-anchor="start" font-weight="600">dw.dim_customer</text>
+<text x="650.0" y="145" font-family="'Cascadia Mono',Consolas,'SF Mono',Menlo,monospace" font-size="16.5" fill="#17110F" text-anchor="start" font-weight="600">customer_key</text>
+<text x="910.0" y="145" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12.5" fill="#D6001C" text-anchor="end" font-weight="700" letter-spacing="0.6">PK</text>
+<text x="650.0" y="175" font-family="'Cascadia Mono',Consolas,'SF Mono',Menlo,monospace" font-size="16.5" fill="#7C6F6A" text-anchor="start" font-weight="400">customer_id</text>
+<text x="910.0" y="175" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12.5" fill="#7C6F6A" text-anchor="end" font-weight="700" letter-spacing="0.6">UQ</text>
+<line x1="650.0" y1="188" x2="910.0" y2="188" stroke="#E0D5D1" stroke-width="1"/>
+<text x="650.0" y="211" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="14.5" fill="#D6001C" text-anchor="start" font-weight="600">503,216 rows</text>
+<text x="910.0" y="211" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="13" fill="#7C6F6A" text-anchor="end" font-weight="400" font-style="italic">identity only (D2)</text>
+<rect x="1080" y="384.0" width="300" height="254" rx="14" ry="14" fill="#FFFFFF" stroke="#E0D5D1" stroke-width="1.5"/>
+<path d="M1080,436.0 L1080,398.0 Q1080,384.0 1094,384.0 L1366,384.0 Q1380,384.0 1380,398.0 L1380,436.0 Z" fill="#17110F"/>
+<text x="1100" y="418.0" font-family="'Cascadia Mono',Consolas,'SF Mono',Menlo,monospace" font-size="19.5" fill="#FFFFFF" text-anchor="start" font-weight="600">dw.dim_reviewer_profile</text>
+<text x="1100" y="469.0" font-family="'Cascadia Mono',Consolas,'SF Mono',Menlo,monospace" font-size="16.5" fill="#17110F" text-anchor="start" font-weight="600">reviewer_profile_key</text>
+<text x="1360" y="469.0" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12.5" fill="#D6001C" text-anchor="end" font-weight="700" letter-spacing="0.6">PK</text>
+<text x="1100" y="499.0" font-family="'Cascadia Mono',Consolas,'SF Mono',Menlo,monospace" font-size="16.5" fill="#7C6F6A" text-anchor="start" font-weight="400">skin_tone</text>
+<text x="1100" y="529.0" font-family="'Cascadia Mono',Consolas,'SF Mono',Menlo,monospace" font-size="16.5" fill="#7C6F6A" text-anchor="start" font-weight="400">skin_type</text>
+<text x="1100" y="559.0" font-family="'Cascadia Mono',Consolas,'SF Mono',Menlo,monospace" font-size="16.5" fill="#7C6F6A" text-anchor="start" font-weight="400">eye_color</text>
+<text x="1100" y="589.0" font-family="'Cascadia Mono',Consolas,'SF Mono',Menlo,monospace" font-size="16.5" fill="#7C6F6A" text-anchor="start" font-weight="400">hair_color</text>
+<line x1="1100" y1="602.0" x2="1360" y2="602.0" stroke="#E0D5D1" stroke-width="1"/>
+<text x="1100" y="625.0" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="14.5" fill="#D6001C" text-anchor="start" font-weight="600">1,896 rows</text>
+<text x="1360" y="625.0" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="13" fill="#7C6F6A" text-anchor="end" font-weight="400" font-style="italic">junk dimension</text>
+<rect x="620.0" y="798" width="320" height="224" rx="14" ry="14" fill="#FFFFFF" stroke="#E0D5D1" stroke-width="1.5"/>
+<path d="M620.0,850 L620.0,812 Q620.0,798 634.0,798 L926.0,798 Q940.0,798 940.0,812 L940.0,850 Z" fill="#17110F"/>
+<text x="640.0" y="832" font-family="'Cascadia Mono',Consolas,'SF Mono',Menlo,monospace" font-size="19.5" fill="#FFFFFF" text-anchor="start" font-weight="600">dw.dim_date</text>
+<text x="640.0" y="883" font-family="'Cascadia Mono',Consolas,'SF Mono',Menlo,monospace" font-size="16.5" fill="#17110F" text-anchor="start" font-weight="600">date_key</text>
+<text x="920.0" y="883" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12.5" fill="#D6001C" text-anchor="end" font-weight="700" letter-spacing="0.6">PK</text>
+<text x="640.0" y="913" font-family="'Cascadia Mono',Consolas,'SF Mono',Menlo,monospace" font-size="16.5" fill="#7C6F6A" text-anchor="start" font-weight="400">full_date</text>
+<text x="920.0" y="913" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12.5" fill="#7C6F6A" text-anchor="end" font-weight="700" letter-spacing="0.6">UQ</text>
+<text x="640.0" y="943" font-family="'Cascadia Mono',Consolas,'SF Mono',Menlo,monospace" font-size="16.5" fill="#7C6F6A" text-anchor="start" font-weight="400">year, quarter, month</text>
+<text x="640.0" y="973" font-family="'Cascadia Mono',Consolas,'SF Mono',Menlo,monospace" font-size="16.5" fill="#7C6F6A" text-anchor="start" font-weight="400">week, day_name, is_weekend</text>
+<line x1="640.0" y1="986" x2="920.0" y2="986" stroke="#E0D5D1" stroke-width="1"/>
+<text x="640.0" y="1009" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="14.5" fill="#D6001C" text-anchor="start" font-weight="600">5,379 rows</text>
+<text x="920.0" y="1009" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="13" fill="#7C6F6A" text-anchor="end" font-weight="400" font-style="italic">date_key = YYYYMMDD (D12)</text>
+<line x1="510" y1="511.0" x2="590" y2="511.0" stroke="#8C7D78" stroke-width="2" marker-end="url(#arrow)" marker-start="url(#dot)"/>
+<text x="534" y="499.0" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="15" fill="#D6001C" text-anchor="middle" font-weight="700">1</text>
+<text x="564" y="499.0" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="15" fill="#D6001C" text-anchor="middle" font-weight="700">N</text>
+<line x1="1080" y1="511.0" x2="970" y2="511.0" stroke="#8C7D78" stroke-width="2" marker-end="url(#arrow)" marker-start="url(#dot)"/>
+<text x="1056" y="499.0" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="15" fill="#D6001C" text-anchor="middle" font-weight="700">1</text>
+<text x="996" y="499.0" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="15" fill="#D6001C" text-anchor="middle" font-weight="700">N</text>
+<line x1="780.0" y1="224" x2="780.0" y2="324" stroke="#8C7D78" stroke-width="2" marker-end="url(#arrow)" marker-start="url(#dot)"/>
+<text x="796.0" y="248" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="15" fill="#D6001C" text-anchor="middle" font-weight="700">1</text>
+<text x="796.0" y="308" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="15" fill="#D6001C" text-anchor="middle" font-weight="700">N</text>
+<line x1="780.0" y1="798" x2="780.0" y2="698" stroke="#8C7D78" stroke-width="2" marker-end="url(#arrow)" marker-start="url(#dot)"/>
+<text x="796.0" y="774" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="15" fill="#D6001C" text-anchor="middle" font-weight="700">1</text>
+<text x="796.0" y="714" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="15" fill="#D6001C" text-anchor="middle" font-weight="700">N</text>
+<line x1="300" y1="869.0" x2="360.0" y2="698.0" stroke="#8C7D78" stroke-width="2" marker-end="url(#arrow)" marker-start="url(#dot)"/>
+<text x="316" y="845.0" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="15" fill="#D6001C" text-anchor="middle" font-weight="700">1</text>
+<text x="376.0" y="714.0" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="15" fill="#D6001C" text-anchor="middle" font-weight="700">N</text>
+<text x="60" y="104" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="20" fill="#D6001C" text-anchor="start" font-weight="700">No brand_key on the fact table</text>
+<text x="60" y="142" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="17" fill="#7C6F6A" text-anchor="start" font-weight="400">Brand is functionally determined by product,</text>
+<text x="60" y="169" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="17" fill="#7C6F6A" text-anchor="start" font-weight="400">so it lives on dim_product only. A copy on</text>
+<text x="60" y="196" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="17" fill="#7C6F6A" text-anchor="start" font-weight="400">fact_reviews would add no information and</text>
+<text x="60" y="223" font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="17" fill="#7C6F6A" text-anchor="start" font-weight="400">create a way for the two to disagree (D11).</text>
+</svg>
