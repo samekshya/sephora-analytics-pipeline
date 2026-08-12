@@ -16,16 +16,17 @@ actually stands right now*.
 
 **Stages 1–11 of the pipeline are built, run, and verified.** The warehouse holds
 1,093,371 fact rows, Airflow runs both modes green, the dashboard works, 51 tests
-pass, and the screenshots plus eight-minute deck are complete. What remains is
-final validation and merging the current dashboard branch — not pipeline work.
+pass, and the screenshots plus eight-minute deck are complete. Final validation
+passed and the completed dashboard branch is merged into local `main`.
 
 ### Where the code is right now
 
 | | |
 |---|---|
-| Current branch | `dashboard-polish` — dashboard controls, review-length analysis, live quality panel, and shared page styling are complete |
-| `main` | `90edfab` "Merge phase 9: audit remediation, dashboard and documentation" — matches `origin/main` |
-| Completion pass | **In progress** — documentation, live DAG proof, screenshots, and deck complete; final validation and merge remain |
+| Current branch | `main` at `affaf7a` — completion merge recorded locally |
+| Dashboard branch | `dashboard-polish` at `2113a23` — retained as the completed phase branch |
+| Remote state | `origin/main` remains at `90edfab`; push `dashboard-polish` and `main` after remote-write approval |
+| Completion pass | **Complete locally** — documentation, live DAG proof, screenshots, deck, final validation, and merge are done |
 
 The completed dashboard work is the source of **D23** and the 10th analytics
 view. It has already passed the host integration suite; this completion pass
@@ -60,7 +61,7 @@ sql/analytics/views/  10 views, the dashboard's only read surface
 sql/validation/     dashboard_checks.sql — read-only assertions, changes nothing (D22)
 dashboard/app.py    Streamlit, 2 pages, ~1,075 lines, live Postgres connection
 tests/              unit/ + integration/ + test_dag_structure.py + verify_dag_in_container.py
-docs/               01–11 plus README index; screenshots/ is empty and waiting
+docs/               01–11 plus README index and 4 verified runtime screenshots
 setup.ps1           11 resumable steps, end to end from empty Docker to loaded warehouse
 reference/          the course's reference project — the format constraint, see section 1
 ```
@@ -91,11 +92,9 @@ defaults. Source CSVs are **not** in git — `data/README.md` says where to get 
 
 ### What remains — the actual to-do list
 
-Ordered by what the capstone is graded on. Nothing here is blocked.
-
-1. **Final validation and merge** — re-run the full host suite, DAG assertions,
-   warehouse reconciliation, and dashboard smoke tests, then merge
-   `dashboard-polish` into `main` and push both refs.
+The implementation and local handoff are complete. The only remaining repository
+operation is to push `dashboard-polish` and `main` to the configured GitHub remote
+after explicit remote-write approval.
 
 ### Things that look like bugs and are not
 
@@ -254,13 +253,12 @@ Indexes on all four fact FK columns. **No `brand_key` on the fact table** (D11).
 | 9. Tests | **Done** — 51 pytest passing + 11 DAG assertions verified in-container |
 | 10. Documentation | **Done** — `docs/01`–`11` + index; 23 decisions logged |
 | 11. Reproducibility | **Done** — `setup.ps1`, 11 resumable steps; `.env.example` with working defaults |
-| — Dashboard polish | **Done, awaiting merge** — status strip, 3 query-param controls, shareable Deep-dive URL, `vw_rating_by_review_length`, data-quality panel, shared page shape. Source of D23 |
+| — Dashboard polish | **Done and merged** — status strip, 3 query-param controls, shareable Deep-dive URL, `vw_rating_by_review_length`, data-quality panel, shared page shape. Source of D23 |
 | — Presentation deck | **Done** — 8 timed slides; editable PowerPoint, PDF, embedded notes, and reproducible builder under `presentation/` |
 | — Screenshots | **Done** — 4 required live captures under `docs/screenshots/`, all visually inspected |
 
-Stages 1–11 are complete and verified against real runs; the numbers in section 7
-come from those runs, not from estimates. The only outstanding work is the last
-three rows. See **section 0** for the ordered to-do list.
+Stages 1–11 and all presentation deliverables are complete and verified against
+real runs; the numbers in section 7 come from those runs, not from estimates.
 
 ---
 
@@ -331,7 +329,7 @@ Fill in from actual runs. Never estimate here — if it isn't measured, leave it
 | **Staging cleanup** | All 6 staging tables at 0 rows after both runs (`trigger_rule="all_done"`) |
 | **Analytics views** | **10** views created; all 8 full-population views reconcile to 1,093,371 exactly (`vw_rating_by_skin_type` and `vw_hype_vs_reality` are deliberate subsets) |
 | **DAG structure** | 16 tasks; 11/11 assertions pass in-container (watcher is the only leaf, watches all 15 others) |
-| **Test suite** | **51 passed**, 1 skipped locally (airflow not in the host venv) |
+| **Final test suite (2026-08-12)** | **51 passed**, 1 skipped locally (Airflow is verified separately in-container); 31 non-failing pandas DBAPI compatibility warnings |
 | **Migration idempotency** | All 22 migrations re-applied against a fully-loaded database with no error |
 | **Dashboard** | Both pages render via `AppTest`; KPI row equals `SELECT count(*), avg(rating) FROM dw.fact_reviews`. Each of the 3 Deep-dive sliders asserted live individually (hype gap 1,660 → 484 products, price 1,660 → 935, skin tones 12 → 14 at floor 0) |
 | **Live-refresh demo, verified end to end** | `DELETE FROM dw.fact_reviews WHERE submission_date >= '2023-01-01'` → exactly 1,043,868 / watermark 2022-12-31; incremental restores 49,503 with 0 already present. `--mode historical` does **not** reset a full warehouse (no truncate anywhere, all loads `ON CONFLICT DO NOTHING`) |
