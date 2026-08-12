@@ -267,8 +267,8 @@ Indexes on all four fact FK columns. **No `brand_key` on the fact table** (D11).
 | 5. ETL package + `pipeline.py` | **Done** — three named load modes (D17), row reconciliation (D19), severity-aware quality gate (D21) |
 | 6. Airflow staged DAG | **Done** — 15 tasks; cleanup is a teardown, replacing the failure watcher (D24, superseding D20); historical, incremental and an injected-failure run all verified |
 | 7. Analytics views | **Done** — 11 views (one uses window functions), split from validation SQL (D22); `vw_rating_by_brand_category` added so the dashboard category filter can scope the brand chart (D25) |
-| 8. Streamlit dashboard | **Done** — ONE page, validated Sephora palette, 4 query-bound controls (category · brand review floor · brand · product search), live KPI strip and data-quality panel (D18, D23, D25) |
-| 9. Tests | **Done** — 51 pytest passing + 11 DAG assertions verified in-container |
+| 8. Streamlit dashboard | **Done** — ONE page, validated Sephora palette, 4 query-bound controls (category · **brand** · brand review floor · product search — the first three in the sidebar), live KPI strip and data-quality panel (D18, D23, D25) |
+| 9. Tests | **Done** — 52 pytest passing + 11 DAG assertions verified in-container |
 | 10. Documentation | **Done** — `docs/01`–`11` + index; 24 decisions logged |
 | 11. Reproducibility | **Done** — `setup.ps1`, 11 resumable steps; `.env.example` with working defaults |
 | — Dashboard polish | **Done and merged** — status strip, 3 query-param controls, shareable Deep-dive URL, `vw_rating_by_review_length`, data-quality panel, shared page shape. Source of D23 |

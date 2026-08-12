@@ -75,8 +75,8 @@ screen and be a different claim entirely.
 | Control | Bound into | Scopes |
 |---|---|---|
 | **Category** (sidebar) | `secondary_category = ANY(%s)` | Brands, categories, hype, skin type, product explorer |
+| **Brand** (sidebar) | `(%s = 0 OR brand_name = ANY(%s))` | The brand chart, hype vs reality, product explorer |
 | **Minimum reviews per brand** (sidebar) | `WHERE review_count >= %s` | The brand chart. Without a floor the "best brand" is whichever has a single 5-star review |
-| **Brand** (Explore section) | `brand_name = ANY(%s)` | The product table |
 | **Product name contains** (Explore section) | `product_name ILIKE %s` | The product table |
 | **Refresh data** | Clears the query cache, freezes the row-count baseline | Everything — this is what makes "live" demonstrable |
 
@@ -93,9 +93,26 @@ it: `vw_rating_by_brand` groups by brand alone, so filtering it would silently d
 nothing. Brand figures are re-aggregated from that view with a review-count
 **weighted** mean, not an average of averages.
 
-The product-level filters deliberately live in the Explore section rather than
-the sidebar, directly above the only table they scope, so their reach is never
-in question.
+### What Brand does and does not scope
+
+Only three views carry `brand_name` — `vw_rating_by_brand`,
+`vw_rating_by_brand_category` and `vw_hype_vs_reality` — so the brand filter
+reaches exactly three sections. The category chart, price bands, skin type,
+review length and the monthly trend all aggregate brand away entirely; there is
+no column to filter on. They stay catalogue-wide, and the banner says so rather
+than leaving the reader to assume the whole page narrowed.
+
+Two claims stand down when a brand selection is active: BQ1 stops asserting that
+brand outweighs every other effect (with three brands selected the spread is
+whatever those three happen to differ by), and BQ2's widest gap is described as
+the widest *in the current selection* rather than in the catalogue.
+
+Brand lives in the sidebar with the other scope filters. It was previously a
+second multiselect inside the Explore section, which meant two brand controls
+could disagree with no way to tell which one the charts above were obeying —
+`test_brand_filter_scopes_the_brand_chart_and_the_explorer` asserts a second one
+has not come back. **Product name contains** stays in the Explore section,
+directly above the only table it scopes.
 
 Still removed from the earlier design: the date-range, hype-gap, price-range and
 skin-group sliders (D25).

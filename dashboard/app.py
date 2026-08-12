@@ -127,20 +127,30 @@ CSS = f"""
     color: {MUTED}; text-transform: uppercase; letter-spacing: .06em;
     font-size: .72rem;
   }}
-  h1, h2, h3 {{ color: {INK}; letter-spacing: -0.01em; }}
+  /* Headings.
+     Streamlit's own heading weight is ~600, which on a black plane reads as
+     emphasised body text rather than a landmark — the section titles and the
+     finding beneath them ended up at a similar visual weight, so the page had
+     no scan structure. These are the landmarks: set heavier, larger, and at
+     full white. !important because Streamlit's emotion classes carry higher
+     specificity than a bare element selector. */
+  h1, h2, h3 {{ color: {INK} !important; letter-spacing: -0.02em; }}
+  h1 {{ font-weight: 800 !important; }}
+  h2, h3 {{ font-weight: 700 !important; }}
+  h3 {{ font-size: 1.55rem !important; line-height: 1.25; }}
   /* The red rule under every section heading — the one brand flourish */
   .rule {{
     height: 3px; width: 56px; background: {RED};
     border-radius: 2px; margin: 0 0 .6rem 0;
   }}
   .chart-title {{
-    color: {INK}; font-size: 1rem; font-weight: 600; margin: 0 0 .15rem 0;
+    color: {INK}; font-size: 1.05rem; font-weight: 700; margin: 0 0 .15rem 0;
   }}
   .chart-sub {{ color: {MUTED}; font-size: .82rem; margin: 0 0 .5rem 0; }}
   .finding {{
     color: {INK_2}; font-size: 1rem; line-height: 1.55; margin: 0 0 .4rem 0;
   }}
-  .finding b {{ color: {INK}; }}
+  .finding b {{ color: {INK}; font-weight: 700; }}
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
@@ -395,13 +405,17 @@ def bq5_trend():
 # BQ1 — brands and categories
 # --------------------------------------------------------------------------
 
-def bq1_brands(min_reviews, overall_rating, categories, scoped):
+def bq1_brands(min_reviews, overall_rating, categories, scoped, picked_brands):
   # Two queries, one per scope, rather than one query with a clever predicate.
   # When nothing is filtered, vw_rating_by_brand is the authoritative brand
   # aggregate and is what dashboard_checks.sql validates. When a category
   # filter is on, the brand-by-category view is re-aggregated with a
   # review-count-WEIGHTED mean — averaging the per-category averages would
   # weight a 12-review category the same as a 300,000-review one.
+  #
+  # The brand predicate is bound the same way in both branches: an empty
+  # selection means "no filter", expressed as a count of 0 rather than by
+  # building a different SQL string.
   if scoped:
     brands = q("""
       SELECT brand_name,
@@ -409,34 +423,48 @@ def bq1_brands(min_reviews, overall_rating, categories, scoped):
              round(sum(avg_rating * review_count) / sum(review_count), 4) AS avg_rating
       FROM dw.vw_rating_by_brand_category
       WHERE secondary_category = ANY(%s)
+        AND (%s = 0 OR brand_name = ANY(%s))
       GROUP BY brand_name
       HAVING sum(review_count) >= %s
       ORDER BY avg_rating DESC
-    """, (categories, int(min_reviews)))
+    """, (categories, len(picked_brands), picked_brands or [""], int(min_reviews)))
   else:
     brands = q("""
       SELECT brand_name, review_count, avg_rating
       FROM dw.vw_rating_by_brand
       WHERE review_count >= %s
+        AND (%s = 0 OR brand_name = ANY(%s))
       ORDER BY avg_rating DESC
-    """, (int(min_reviews),))
+    """, (int(min_reviews), len(picked_brands), picked_brands or [""]))
 
   if brands.empty:
     section("BQ1 · Which brands rate best, and which underperform?",
-            "No brand clears the current review floor.")
-    st.info(f"No brand has at least {min_reviews:,} reviews. Lower the floor.")
+            "No brand matches the current filters.")
+    if picked_brands:
+      st.info(
+        f"None of the {len(picked_brands)} selected brand"
+        f"{'' if len(picked_brands) == 1 else 's'} has at least "
+        f"{int(min_reviews):,} reviews in the selected categories. Lower the "
+        f"review floor, or widen the brand selection.")
+    else:
+      st.info(f"No brand has at least {min_reviews:,} reviews. Lower the floor.")
     return
 
   top, bottom = brands.head(10), brands.tail(10)
   spread = float(top.iloc[0]["avg_rating"] - bottom.iloc[-1]["avg_rating"])
 
+  # "Brand matters more than anything else here" is a claim about the whole
+  # catalogue. Once a handful of brands are selected the spread is whatever
+  # those few happen to differ by, so the claim is dropped rather than restated
+  # over a population that cannot support it.
   section(
     "BQ1 · Which brands rate best, and which underperform?",
     f"<b>{top.iloc[0]['brand_name']}</b> at {top.iloc[0]['avg_rating']:.2f} to "
     f"<b>{bottom.iloc[-1]['brand_name']}</b> at "
-    f"{bottom.iloc[-1]['avg_rating']:.2f} — a spread of <b>{spread:.2f} stars</b>. "
-    f"That is far larger than any other effect on this page: brand matters more "
-    f"than category, price, or who is doing the rating.")
+    f"{bottom.iloc[-1]['avg_rating']:.2f} — a spread of <b>{spread:.2f} stars</b>."
+    + ("" if picked_brands else
+       " That is far larger than any other effect on this page: brand matters "
+       "more than category, price, or who is doing the rating."))
 
   # Deviation from the overall mean, not raw rating. Anchoring on 4.299 is what
   # makes "underperform" mean something — every bar is read against the average
@@ -447,9 +475,10 @@ def bq1_brands(min_reviews, overall_rating, categories, scoped):
 
   box = card(
     f"Brands against the {overall_rating:.3f} overall average",
-    f"Top and bottom 10 of the {len(brands)} brands with at least "
-    f"{int(min_reviews):,} reviews. Bars run left of the line for below "
-    f"average, right for above.")
+    (f"All {len(brands)} matching brands, " if len(brands) <= 20 else
+     f"Top and bottom 10 of the {len(brands)} brands, ")
+    + f"each with at least {int(min_reviews):,} reviews. Bars run left of the "
+      f"line for below average, right for above.")
   fig = go.Figure(go.Bar(
     x=ranked["delta"], y=ranked["brand_name"], orientation="h",
     marker_color=[RED if d >= 0 else BLUE for d in ranked["delta"]],
@@ -465,10 +494,12 @@ def bq1_brands(min_reviews, overall_rating, categories, scoped):
   show(box, fig)
 
   st.caption(
-    f"{len(brands)} of 304 brands clear the {int(min_reviews):,}-review floor. "
-    "Drop the floor and the top of this chart becomes brands with a single "
-    "5-star review — which is exactly why the floor is the one control on this "
-    "page."
+    (f"{len(brands)} of the {len(picked_brands)} selected brands clear the "
+     f"{int(min_reviews):,}-review floor. "
+     if picked_brands else
+     f"{len(brands)} of 304 brands clear the {int(min_reviews):,}-review floor. ")
+    + "Drop the floor and the top of this chart becomes brands with a single "
+      "5-star review — which is exactly why the floor exists."
   )
 
 
@@ -614,15 +645,23 @@ def bq3_price():
 # BQ2 — hype vs reality
 # --------------------------------------------------------------------------
 
-def bq2_hype(categories):
+def bq2_hype(categories, picked_brands):
   hype = q("""
     SELECT product_name, brand_name, secondary_category, price_usd,
            loves_count, review_count, avg_rating, hype_gap
     FROM dw.vw_hype_vs_reality
     WHERE secondary_category = ANY(%s)
+      AND (%s = 0 OR brand_name = ANY(%s))
     ORDER BY hype_gap DESC
-  """, (categories,))
+  """, (categories, len(picked_brands), picked_brands or [""]))
   if hype.empty:
+    if picked_brands:
+      section("BQ2 · Hype vs reality — which products are loved more than they deserve?",
+              "No product from the selected brands clears the 50-review floor.")
+      st.info(
+        "`vw_hype_vs_reality` only carries products with at least 50 reviews, "
+        "because both rating and hype gap are unstable below that. Widen the "
+        "brand or category selection.")
     return
 
   worst = hype.iloc[0]
@@ -630,8 +669,9 @@ def bq2_hype(categories):
   section(
     "BQ2 · Hype vs reality — which products are loved more than they deserve?",
     f"Wanting a product and liking it are different signals. "
-    f"<b>{worst['brand_name']} {worst['product_name']}</b> is the widest gap in "
-    f"the catalogue: <b>{int(worst['loves_count']):,} loves</b> against a "
+    f"<b>{worst['brand_name']} {worst['product_name']}</b> is the widest gap "
+    f"{'in the current selection' if picked_brands else 'in the catalogue'}: "
+    f"<b>{int(worst['loves_count']):,} loves</b> against a "
     f"<b>{worst['avg_rating']:.2f}</b> rating. `loves_count` is recorded before "
     f"purchase, the rating after — so the gap between them is marketing "
     f"working better than the product does.")
@@ -827,30 +867,22 @@ def bq4_and_length(categories):
 # the sidebar Category filter has to explain with a note.
 # --------------------------------------------------------------------------
 
-def product_explorer(categories):
+def product_explorer(categories, picked_brands):
   section(
     "Explore · find a category, brand or product",
     "Everything above is an aggregate. This is the row-level view behind it — "
     "filter down to a single product and read its actual numbers.")
 
-  brands = q("""
-    SELECT DISTINCT brand_name
-    FROM dw.vw_hype_vs_reality
-    WHERE secondary_category = ANY(%s)
-    ORDER BY 1
-  """, (categories,))["brand_name"].tolist()
-
-  c1, c2 = st.columns([1, 1])
-  with c1:
-    picked = st.multiselect(
-      "Brand", options=brands, default=[],
-      help="Empty means every brand in the selected categories.")
-  with c2:
-    search = st.text_input(
-      "Product name contains", value="",
-      placeholder="e.g. vitamin c, cleanser, retinol",
-      help="Case-insensitive substring match, applied in SQL as ILIKE, not as "
-           "a filter over a preloaded frame.")
+  # Brand used to be a second multiselect here. It moved to the sidebar so
+  # there is exactly one brand control on the page: two of them could disagree,
+  # and a reader had no way to tell which one the charts above were obeying.
+  search = st.text_input(
+    "Product name contains", value="",
+    placeholder="e.g. vitamin c, cleanser, retinol",
+    help="Case-insensitive substring match, applied in SQL as ILIKE, not as "
+         "a filter over a preloaded frame. Combines with the sidebar's "
+         "Category and Brand filters.")
+  picked = picked_brands
 
   # Both filters bind into the query. The brand list is passed as a real array
   # parameter and the search as an ILIKE pattern — neither is interpolated into
@@ -1053,6 +1085,25 @@ def sidebar():
 
   scoped = len(categories) < len(all_categories)
 
+  # Brand options are drawn from the CURRENT category selection, so the list
+  # never offers a brand that would return nothing. Default is empty, which
+  # means "every brand" — the same convention the category filter uses when
+  # everything is selected.
+  all_brands = q("""
+    SELECT DISTINCT brand_name
+    FROM dw.vw_rating_by_brand_category
+    WHERE secondary_category = ANY(%s)
+    ORDER BY 1
+  """, (categories,))["brand_name"].tolist()
+
+  brands = st.sidebar.multiselect(
+    "Brand", options=all_brands, default=[],
+    placeholder="All brands",
+    help="Empty means every brand in the selected categories. Binds into SQL "
+         "as `brand_name = ANY(%s)`, so the charts re-query — this is not a "
+         "filter applied to an already-fetched frame.",
+  )
+
   min_reviews = st.sidebar.number_input(
     "Minimum reviews per brand",
     min_value=1, max_value=5000, value=500, step=50,
@@ -1089,20 +1140,28 @@ def sidebar():
       "dashboard is wrong."
     )
 
-  with st.sidebar.expander("What the Category filter scopes"):
+  with st.sidebar.expander("What the filters scope"):
     st.markdown(
-      "**Responds:** brands · categories · hype vs reality · skin type · "
-      "product explorer.\n\n"
-      "**Does not:** the volume/rating trend and the price bands. Those come "
-      "from `vw_review_volume_by_month` and `vw_rating_by_price_band`, which "
-      "aggregate away the category column — a filter applied to them would do "
-      "nothing while appearing to work. Each is labelled *all categories* on "
-      "the page so the scope is never ambiguous.\n\n"
-      "The brand chart responds because `vw_rating_by_brand_category` was "
-      "added for exactly this; brand-level figures are re-aggregated with a "
-      "review-count-weighted mean, not an average of averages."
+      "**Category responds:** brands · categories · hype vs reality · skin "
+      "type · product explorer.\n\n"
+      "**Category does not:** the volume/rating trend and the price bands. "
+      "Those come from `vw_review_volume_by_month` and "
+      "`vw_rating_by_price_band`, which aggregate away the category column — a "
+      "filter applied to them would do nothing while appearing to work. Each "
+      "is labelled *all categories* on the page so the scope is never "
+      "ambiguous.\n\n"
+      "**Brand responds:** brands · hype vs reality · product explorer. Those "
+      "are the three sections whose views carry `brand_name` — "
+      "`vw_rating_by_brand`, `vw_rating_by_brand_category` and "
+      "`vw_hype_vs_reality`.\n\n"
+      "**Brand does not:** categories, price bands, skin type, review length "
+      "or the trend. Their views aggregate brand away entirely, so there is no "
+      "column to filter on. Rather than silently ignore the selection, those "
+      "sections stay catalogue-wide and say so.\n\n"
+      "Brand-level figures are re-aggregated with a review-count-weighted "
+      "mean, not an average of averages."
     )
-  return categories, scoped, min_reviews
+  return categories, scoped, min_reviews, brands
 
 
 # --------------------------------------------------------------------------
@@ -1121,35 +1180,43 @@ def main():
     )
     st.stop()
 
-  categories, scoped, min_reviews = sidebar()
+  categories, scoped, min_reviews, brands = sidebar()
 
   k = header_and_kpis()
-  if scoped:
-    shown = ", ".join(categories[:6]) + ("…" if len(categories) > 6 else "")
+  if scoped or brands:
+    parts = []
+    if scoped:
+      shown = ", ".join(categories[:6]) + ("…" if len(categories) > 6 else "")
+      parts.append(
+        f"**{len(categories)}** categor"
+        f"{'y' if len(categories) == 1 else 'ies'} — {shown}")
+    if brands:
+      shown = ", ".join(brands[:6]) + ("…" if len(brands) > 6 else "")
+      parts.append(
+        f"**{len(brands)}** brand{'' if len(brands) == 1 else 's'} — {shown}")
     st.info(
-      f"Scoped to **{len(categories)}** categor"
-      f"{'y' if len(categories) == 1 else 'ies'} — {shown}. The KPI row above "
-      f"and the two sections marked *all categories* stay catalogue-wide; the "
-      f"sidebar note **What the Category filter scopes** says why.")
+      f"Scoped to {' · '.join(parts)}. The KPI row above stays catalogue-wide, "
+      f"and so does any section whose view aggregates the filtered column "
+      f"away; the sidebar note **What the filters scope** lists exactly which.")
   st.divider()
 
   bq5_trend()
   st.divider()
 
-  bq1_brands(min_reviews, float(k["avg_rating"]), categories, scoped)
+  bq1_brands(min_reviews, float(k["avg_rating"]), categories, scoped, brands)
   bq1_categories(categories)
   st.divider()
 
   bq3_price()
   st.divider()
 
-  bq2_hype(categories)
+  bq2_hype(categories, brands)
   st.divider()
 
   bq4_and_length(categories)
   st.divider()
 
-  product_explorer(categories)
+  product_explorer(categories, brands)
   st.divider()
 
   data_quality_panel()

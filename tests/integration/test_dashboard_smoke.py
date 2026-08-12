@@ -162,6 +162,48 @@ def test_category_filter_scopes_the_brand_chart():
     "not reaching vw_rating_by_brand_category")
 
 
+def test_brand_filter_scopes_the_brand_chart_and_the_explorer():
+  """The brand filter must reach the queries, like every other control (D23).
+
+  Brands are read from the warehouse rather than hardcoded: a literal brand
+  name would make this test fail for a data reason rather than a code reason
+  the first time the catalogue changed.
+  """
+  conn = _dw_connection()
+  try:
+    with conn.cursor() as cur:
+      cur.execute("""
+        SELECT brand_name FROM dw.vw_rating_by_brand
+        WHERE review_count >= 500 ORDER BY review_count DESC LIMIT 2
+      """)
+      picked = [r[0] for r in cur.fetchall()]
+  finally:
+    conn.close()
+
+  assert len(picked) == 2, "warehouse has fewer than 2 brands over the floor"
+
+  at = _run()
+  brands_before = _caption_containing(at, "brands clear the")
+  products_before = _caption_containing(at, "products match")
+
+  # multiselect[1] is Brand; [0] is Category.
+  at.sidebar.multiselect[1].set_value(picked).run()
+  assert not at.exception
+
+  assert _caption_containing(at, "brands clear the") != brands_before, (
+    "selecting brands left the brand chart unchanged — the filter is not "
+    "reaching vw_rating_by_brand")
+  assert _caption_containing(at, "products match") != products_before, (
+    "selecting brands left the product explorer unchanged")
+
+  # The explorer's own brand control was removed when the filter moved to the
+  # sidebar; two brand controls could disagree with no way to tell which one
+  # the charts above were obeying.
+  assert len(at.sidebar.multiselect) == 2, "sidebar should hold Category and Brand"
+  assert len(at.multiselect) == 2, (
+    "a second brand control has come back into the page body")
+
+
 def test_product_search_is_live():
   """The product search must be an ILIKE in SQL, not a frame filter."""
   at = _run()
