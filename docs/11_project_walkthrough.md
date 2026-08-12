@@ -17,9 +17,9 @@ version.
 > | 15 DAG tasks | **16** — a failure watcher was added — [06](06_airflow_runbook.md), D20 |
 > | Unmatched rows dropped with a log warning | Counted against a named reason; unexplained gaps raise — D19 |
 > | Quality checks all fatal | `hard_failure` / `warning` severities — D21 |
-> | 8 hand-rolled fault-injection cases | **45 pytest tests** — [08](08_testing_evidence.md) |
+> | 8 hand-rolled fault-injection cases | **51 pytest tests** — [08](08_testing_evidence.md) |
 > | Power BI planned, not built | **Streamlit, built** — [`dashboard/`](../dashboard/README.md), D18 |
-> | 6 analytics views | **9**, split from validation SQL — D22 |
+> | 6 analytics views | **10**, split from validation SQL — D22 |
 > | `dim_reviewer_profile` described as 2,003 rows | **1,896** — 2,003 is the pre-cleaning figure |
 
 ---
@@ -542,82 +542,52 @@ Shape of the DAG:
 
 ---
 
-## 9. Analytics views (`sql/analytics/`)
+## 9. Analytics views (`sql/analytics/views/`)
 
-Six SQL views, plus one cross-check script, built directly in the `dw` schema
-so the analytics logic is versioned in SQL rather than living only inside a
-Power BI file where it can't be reviewed or diffed.
+Ten SQL views expose the warehouse at dashboard-ready grains. Keeping the
+definitions in versioned SQL means the Streamlit app and the validation script
+share one source of truth.
 
-1. **`vw_rating_by_brand`** (BQ1a) — rating/recommend-rate per brand, exposing
-   `review_count` explicitly so the dashboard can enforce a minimum sample
-   size — a "top brand" list built with no floor is just brands with one
-   5-star review, the first thing anyone reviewing the dashboard would catch.
-2. **`vw_rating_by_category`** (BQ1b) — grouped on **all three** category
-   levels together, deliberately *not* rolled up, because (per D1) the levels
-   aren't a real hierarchy and rolling up would double-count.
-3. **`vw_review_trend_monthly`** (BQ2) — monthly, not daily (1.09M reviews
-   across 5,379 days would be noise at daily grain); pulls `year`/`month`
-   from `dim_date` rather than `date_trunc`-ing the fact table directly,
-   which is the actual reason a date dimension exists in the first place.
-4. **`vw_rating_by_price_band`** (BQ3) — grouped on the price bands computed
-   once in `transform.py`, with an explicit `band_order` column, because
-   `'$100+'` sorts alphabetically before `'$15-30'`, which would put any
-   naively-sorted chart in a meaningless order.
-5. **`vw_rating_by_skin_type`** (BQ4) — this is, in the view comment's own
-   words, "the view the junk dimension exists for" — the one query that
-   would have been silently wrong under the earlier, rejected design.
-   Restricted to `primary_category = 'Skincare'` since skin type isn't a
-   meaningful lens on fragrance or brushes; `'Unknown'` is deliberately kept
-   in rather than filtered out (it's 10% of reviews, and hiding it would
-   overstate how much is actually known about reviewers).
-6. **`vw_kpi_summary`** — the single-row KPI strip for dashboard page 1,
-   computed entirely in SQL so the headline numbers can never disagree with
-   the detail visuals underneath them. Deliberately states
-   `products_reviewed` (2,351) *next to* `products_in_catalogue` (8,494)
-   rather than just one number, so the dashboard doesn't imply review
-   coverage it doesn't have. Helpfulness is averaged only over reviews that
-   actually received feedback (`total_feedback_count > 0`), consistent with
-   D5 — never imputed to 0.
-7. **`07_dashboard_checks.sql`** — not a view, a runnable script: reproduces
-   every headline number from the views above (KPI row, top/bottom 10
-   brands, category volumes, yearly trend, price-band satisfaction, skin-type
-   comparison, and a final row-count reconciliation against every dimension
-   and the fact table). The rule stated in its own header: **if Power BI and
-   this file ever disagree, the dashboard is wrong, not this file.**
+1. **`vw_rating_by_brand`** — BQ1 brand performance with explicit sample size.
+2. **`vw_rating_by_category`** — BQ1 category performance at the useful
+   secondary-category level (D16).
+3. **`vw_review_trend_monthly`** — BQ5 monthly rating and volume trend.
+4. **`vw_rating_by_price_band`** — BQ3 ordered price bands and rating spread.
+5. **`vw_rating_by_skin_type`** — BQ4 skin-type comparison through the junk
+   dimension created for review-level profiles.
+6. **`vw_kpi_summary`** — the single-row dashboard KPI strip.
+7. **`vw_hype_vs_reality`** — BQ2 product love/rating gap for products with at
+   least 50 reviews.
+8. **`vw_review_volume_by_month`** — rolling volume, cumulative volume, growth,
+   and the partial-month flag using window functions.
+9. **`vw_rating_by_skin_tone`** — BQ4 skin-tone comparison without hiding the
+   `Unknown` group.
+10. **`vw_rating_by_review_length`** — mutually exclusive review-length buckets,
+    rating variation, and the 1-star/5-star tails.
 
-### Headline findings this produced (for the eventual presentation):
+`sql/validation/dashboard_checks.sql` is deliberately separate from the view
+DDL. It changes nothing; it re-runs headline queries and reconciles every
+full-population view to `fact_reviews`.
 
-- **Overall**: 1,093,371 reviews, average rating **4.2990**, **83.99%**
+### Headline findings
+
+- **Overall**: 1,093,371 reviews, average rating **4.2990**, and **83.99%**
   recommend.
-- **BQ3 is the standout finding** — price vs. satisfaction is an **inverted
-  U**, not a straight line: Under $15 → 4.2383, $15-30 → 4.2756, $30-50 →
-  4.3055, **$50-100 → 4.3335 (the peak)**, then $100+ falls back to **4.2708**.
-  Rating variance also shrinks steadily as price rises (stddev 1.2211 down to
-  1.0996) — expensive products aren't just rated slightly better, they're
-  rated far more *consistently*.
-- **BQ1a best brands** (≥500 reviews): MARA 4.8608, DAMDAM 4.7394, Dr. Lara
-  Devgan 4.7164. **Worst**: Topicals 3.6590, DERMAFLASH 3.7856, Isle of
-  Paradise 3.8601.
-- **BQ1b categories** (at the secondary level — see D16 below): Moisturizers
-  is both the largest category (297,201 reviews) and, along with Cleansers,
-  among the best-rated (Cleansers 4.3443 is the single best); Sunscreen is
-  both smaller and the worst-rated (4.1665).
-- **BQ2 trend**: review volume grew steadily from 2,760 in 2008 to a peak of
-  215,278 in 2020, then eased off. Average rating dipped to its lowest point,
-  **4.2075**, in 2020, and recovered to 4.3384 by 2022.
-- **BQ4 skin type**: Combination skin rates products highest (4.3092), then
-  dry (4.2911), normal (4.2822), and oily lowest (4.2708). The finding is
-  real (verified against the junk dimension specifically because a naive
-  design would have corrupted it) but the spread is small (0.038) — worth
-  presenting as a genuine but weak signal, not a headline result.
-
-**Decision D16**, made at this stage: category analysis runs at the
-**secondary** level, not primary — because every single reviewed product in
-this dataset is `Skincare` at the primary level (the review scrape only
-covers skincare), so a chart of primary category is a single bar and tells
-you nothing. Secondary category (Moisturizers, Treatments, Cleansers, Eye
-Care, Masks, Sunscreen) is the level that actually varies and is where the
-real analysis happens.
+- **BQ3**: price and satisfaction form an inverted U. The $50–100 band peaks at
+  **4.3335**; $100+ falls to **4.2708**. Rating variation also narrows as price
+  rises.
+- **BQ2**: The Ordinary Vitamin C Suspension combines 132,601 loves with a
+  **3.4456** rating, the largest measured hype gap at the default floor.
+- **BQ1**: MARA leads eligible brands at 4.8608; Topicals trails at 3.6590.
+  Cleansers lead the high-volume secondary categories at 4.3443, while
+  Sunscreen is lowest at 4.1665.
+- **BQ4**: skin-type and skin-tone differences are real but small; the
+  skin-type spread is only 0.038 stars and is presented as a weak signal.
+- **BQ5**: volume peaked at 215,278 reviews in 2020 while rating reached its
+  lowest yearly average, 4.2075; ratings recovered by 2022.
+- **Review length**: longer reviews are more moderate, not more negative. Both
+  the 1-star and 5-star shares shrink and rating standard deviation falls from
+  1.2555 to 1.0589.
 
 ---
 
@@ -626,9 +596,9 @@ real analysis happens.
 Throughout, three documents were kept as living records rather than written
 retroactively at the end:
 
-- **`docs/09_decision_log.md`** — 16 numbered decisions (D1–D16), each with
+- **`docs/09_decision_log.md`** — 23 numbered decisions (D1–D23), each with
   its reasoning, written at the point the decision was made.
-- **`docs/checklist.md`** — a 13-section production-readiness checklist
+- **`docs/10_production_readiness_checklist.md`** — a 13-section production-readiness checklist
   (ingestion, cleaning, modeling, incremental loading, idempotency,
   modularity, logging, query/performance, orchestration, quality testing,
   version control, analytics output, documentation) checked off item by item
@@ -645,23 +615,14 @@ Git history mirrors this discipline: one branch per project phase, merged to
 
 ## 11. Where things stand right now
 
-Everything above — exploration, cleaning, the 3NF OLTP database, the star
-schema warehouse, the ETL package, the Airflow DAG (both full and
-incremental), and the six analytics views — is **built, run, and verified**
-with real measured numbers, not estimates.
+Exploration, cleaning, the 3NF OLTP database, the star-schema warehouse, the
+ETL package, all three load modes, the 16-task Airflow DAG, 10 analytics views,
+and the two-page Streamlit dashboard are **built, run, and verified** with
+measured numbers. The host suite has 51 passing tests, and the container-side
+DAG verifier has 11 passing assertions.
 
-**What's left**, and it's entirely manual/presentation work rather than
-engineering work still to design:
-
-1. **The Power BI dashboard itself** — the SQL views it will sit on top of
-   are done and cross-checked; building the actual 2-page report needs the
-   Power BI desktop application.
-2. **At least one DAX measure** inside that dashboard.
-3. **The 8-minute presentation deck** — the five required sections (data
-   source, architecture, design decisions, the Airflow DAG, and the
-   visualizations) all have their source material ready in the README and
-   the decision log; the deck itself hasn't been assembled.
-
-Deliberately **not** done, and explicitly logged as such rather than
-forgotten: external API enrichment (no locked business question needed it),
-and an `EXPLAIN ANALYZE` before/after performance capture.
+The remaining delivery work is presentation packaging: capture the final DAG
+and dashboard evidence, assemble the eight-minute deck, and merge the completed
+dashboard branch. External enrichment, a `highlights` bridge, and an
+`EXPLAIN ANALYZE` benchmark remain deliberate out-of-scope items rather than
+unfinished pipeline requirements.

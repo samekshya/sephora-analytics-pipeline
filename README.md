@@ -71,7 +71,7 @@ flowchart LR
     subgraph DW["sephora_dw — star schema"]
         DIMS[("5 dimensions")]
         FACT[("fact_reviews")]
-        VIEWS[("9 analytics views")]
+        VIEWS[("10 analytics views")]
     end
 
     BI["Streamlit dashboard"]
@@ -101,7 +101,7 @@ reads. The warehouse then denormalizes deliberately — that contrast is the poi
 | Airflow staged DAG | Complete — 16 tasks, failure watcher, both modes green |
 | Analytics views | Complete — 10 views, all full-population views reconciling to `fact_reviews` |
 | Streamlit dashboard | Complete — 2 pages, live, smoke-tested against the warehouse |
-| Tests | 45 passing + 11 DAG assertions verified in-container |
+| Tests | 51 passing + 11 DAG assertions verified in-container |
 | Documentation | Complete — [`docs/`](docs/README.md), 11 numbered documents |
 
 ## The data
@@ -238,15 +238,39 @@ Orchestrated two ways: `pipeline.py` for local runs, and
 
 ## Airflow DAG
 
-```
-create_staging_tables
-      ├──> extract_brand ──> load_brand ──> extract_product ──> load_product ─┐
-      ├──> extract_customer ──────> load_customer ────────────────────────────┤
-      ├──> extract_reviewer_profile ──> load_reviewer_profile ────────────────┤
-      ├──> load_date_dimension ───────────────────────────────────────────────┤
-      └──> extract_fact_to_staging ──> transform_fact ──> quality_fact ──> load_fact
-                                                                              │
-                                                                        cleanup_staging
+```mermaid
+flowchart LR
+    START[create staging tables]
+
+    START --> EB[extract brand] --> LB[load brand] --> EP[extract product] --> LP[load product]
+    START --> EC[extract customer] --> LC[load customer]
+    START --> ER[extract reviewer profile] --> LR[load reviewer profile]
+    START --> DD[load date dimension]
+    START --> EF[extract fact] --> TF[transform fact]
+
+    LP --> TF
+    LC --> TF
+    LR --> TF
+    DD --> TF
+
+    TF --> QF[quality gate] --> LF[load fact]
+    LF --> CLEAN[cleanup staging]
+
+    START --> WATCH[watch for failure]
+    EB --> WATCH
+    LB --> WATCH
+    EP --> WATCH
+    LP --> WATCH
+    EC --> WATCH
+    LC --> WATCH
+    ER --> WATCH
+    LR --> WATCH
+    DD --> WATCH
+    EF --> WATCH
+    TF --> WATCH
+    QF --> WATCH
+    LF --> WATCH
+    CLEAN --> WATCH
 ```
 
 Three dimension branches run in parallel; `product` waits on `brand` for the foreign key. The
@@ -373,7 +397,7 @@ key.
 Dimensions: 304 brands · 8,494 products · 503,216 customers · **1,896** reviewer profiles ·
 5,379 dates.
 
-**Tests** — **45 passing**, plus 11 DAG structural assertions verified inside the Airflow
+**Tests** — **51 passing**, plus 11 DAG structural assertions verified inside the Airflow
 container. Fault injection is the core of it: the suite proves the quality gate *rejects* bad
 data, which matters more than proving it accepts good data — every pipeline run already
 demonstrates the latter. See [`docs/08_testing_evidence.md`](docs/08_testing_evidence.md) for

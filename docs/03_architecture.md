@@ -73,7 +73,7 @@
 ║                    dim_customer (503,216)    dim_reviewer_profile (1,896) ║
 ║                    identity only (D2)        junk dimension (D2)          ║
 ║                                                                           ║
-║  9 analytics views  +  6 stg_* tables used only during a DAG run          ║
+║  10 analytics views +  6 stg_* tables used only during a DAG run          ║
 ╚═══════════════════════════════════════════════════════════════════════════╝
         │
         ▼

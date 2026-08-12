@@ -202,6 +202,28 @@ month `partial month` so the drop is not misread as collapsing demand.
 
 ---
 
+## Review length — longer reviews are more moderate, not more negative
+
+The common assumption that unhappy customers write longer reviews is not
+supported here. Average rating is nearly flat across the five populated
+length buckets: **4.2784 to 4.3342**, a spread of only 0.056 stars.
+
+| Length bucket | Reviews | Avg rating | Rating std dev | 1-star | 5-star |
+|---|---:|---:|---:|---:|---:|
+| Very short (<100) | 100,133 | 4.2784 | 1.2555 | 8.15% | 67.35% |
+| Short (100–249) | 408,384 | 4.2979 | 1.1750 | 6.13% | 65.06% |
+| Medium (250–499) | 413,790 | 4.3069 | 1.1156 | 4.87% | 62.87% |
+| Long (500–999) | 148,816 | 4.2885 | 1.1074 | 4.65% | 61.07% |
+| Very long (1,000+) | 20,804 | 4.3342 | 1.0589 | 3.73% | 62.52% |
+
+The useful signal is **polarisation**. As length rises, the 1-star share and
+the 5-star share both fall, while rating variation declines monotonically.
+Long reviews are more moderate and internally consistent; the two shrinking
+tails largely cancel in the mean. The 1,444 rows with unknown review length
+remain in the reconciliation view but are labelled separately in the app.
+
+---
+
 ## What the dashboard deliberately does *not* claim
 
 - **No causation.** Price *correlates* with consistency; nothing here shows

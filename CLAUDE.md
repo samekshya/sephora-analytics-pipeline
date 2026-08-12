@@ -6,6 +6,121 @@ Never let it drift from what has actually been built and verified.
 
 ---
 
+## 0. Project checkpoint — read this first
+
+Written 2026-08-12 so project work can resume from verified facts rather than
+assumptions. Sections 1–9 describe the *design*; this section describes *where the work
+actually stands right now*.
+
+### The one-line summary
+
+**Stages 1–11 of the pipeline are built, run, and verified.** The warehouse holds
+1,093,371 fact rows, Airflow runs both modes green, the dashboard works, 51 tests
+pass. What is left is **presentation material** (deck, screenshots) and **merging
+the current dashboard branch** — not pipeline work.
+
+### Where the code is right now
+
+| | |
+|---|---|
+| Current branch | `dashboard-polish` — dashboard controls, review-length analysis, live quality panel, and shared page styling are complete |
+| `main` | `90edfab` "Merge phase 9: audit remediation, dashboard and documentation" — matches `origin/main` |
+| Completion pass | **In progress** — documentation reconciled; live DAG proof, screenshots, deck, and final merge remain |
+
+The completed dashboard work is the source of **D23** and the 10th analytics
+view. It has already passed the host integration suite; this completion pass
+adds fresh runtime evidence and presentation assets without changing the
+pipeline's established behavior.
+
+### Working conventions the user expects
+
+- **Git**: work on a phase branch, merge to `main` when the phase is done.
+  Match the existing log's voice: imperative sentences that say what changed and why
+  ("Make the hype gap, price range and skin-group floor real query parameters").
+- **This file**: update the Status table and Measured numbers at the end of every
+  stage. Never write an estimated number here — measure it or leave it blank.
+- **Code style**: section 9. `etl/` is 2-space indented, top-level scripts are 4.
+- **Database**: **port 5434 only.** 5432 and 5433 on this machine belong to
+  unrelated stacks, one of which is a *different Sephora project*. Pointing at
+  the wrong port will appear to work and produce wrong numbers.
+
+### Repo map
+
+```
+explore.py          stage 1 — profiling, 14 checks, prints a report (only script allowed print())
+clean.py            stage 2 — data/raw/*.csv → data/processed/*.csv, drops rows never columns (D14)
+ingest.py           stage 3 — COPY data/processed → raw schema, asserts counts against clean.py
+pipeline.py         local runner: --mode full | historical | incremental
+etl/                extract · transform · reconcile · quality · load · staging  (2-space indent)
+dags/               sephora_dw_pipeline_staged.py — the 16-task DAG
+sql/init/           create both databases
+sql/oltp/           01_raw_schema.sql + 15 timestamped migrations (raw → 3nf → staging)
+sql/datawarehouse/  7 numbered migrations — 5 dims + fact_reviews
+sql/analytics/views/  10 views, the dashboard's only read surface
+sql/validation/     dashboard_checks.sql — read-only assertions, changes nothing (D22)
+dashboard/app.py    Streamlit, 2 pages, ~1,075 lines, live Postgres connection
+tests/              unit/ + integration/ + test_dag_structure.py + verify_dag_in_container.py
+docs/               01–11 plus README index; screenshots/ is empty and waiting
+setup.ps1           11 resumable steps, end to end from empty Docker to loaded warehouse
+reference/          the course's reference project — the format constraint, see section 1
+```
+
+Total migrations: **22** (15 OLTP + 7 DW), all re-appliable against a loaded database.
+
+### Getting a working environment
+
+```powershell
+# 1. Databases (compose project leapfrog-sephora, host port 5434)
+docker compose up -d
+
+# 2. Full setup, 11 resumable steps — safe to re-run
+.\setup.ps1
+
+# 3. Tests
+py -m pytest              # 51 collected; 1 skips locally (airflow not in host venv)
+
+# 4. Dashboard
+py -m streamlit run dashboard/app.py        # http://localhost:8501
+
+# 5. Airflow
+docker compose -f docker-compose-airflow.yml up -d   # http://localhost:8081
+```
+
+`.env` already exists locally and is gitignored; `.env.example` carries working
+defaults. Source CSVs are **not** in git — `data/README.md` says where to get them.
+
+### What remains — the actual to-do list
+
+Ordered by what the capstone is graded on. Nothing here is blocked.
+
+1. **Merge `dashboard-polish` into `main`** and push. Ready now.
+2. **Capture screenshots** — `docs/screenshots/README.md` lists the exact four
+   required filenames plus two optional ones, and the commands to produce each.
+   The optional `airflow_watcher_failed.png` is the most persuasive of the set
+   because it demonstrates the D20 bug fix rather than describing it.
+3. **Build the 8-minute presentation deck.** Not started. All material exists —
+   `docs/README.md` maps each of the five required presentation topics to the
+   document that holds it. Suggested spine: D2 (junk dimension) as the design
+   decision, BQ3 (the inverted U) as the headline insight, and a **live**
+   incremental DAG run rather than a screenshot of one.
+4. **Final validation and merge** — re-run the full host suite, DAG assertions,
+   warehouse reconciliation, and dashboard smoke tests before merging to `main`.
+
+### Things that look like bugs and are not
+
+- **The warehouse being 49,503 rows behind staging** at the historical baseline
+  is correct — those are the 2023 rows held back for the incremental demo (D8).
+  The dashboard's data-quality panel distinguishes "held back" from "lost" on
+  purpose (D23). Do not "fix" it.
+- **`--mode historical` does not reset a full warehouse.** There is no truncate
+  anywhere and every load is `ON CONFLICT DO NOTHING`. To reset for a demo:
+  `DELETE FROM dw.fact_reviews WHERE submission_date >= '2023-01-01'`.
+- **`watch_for_failure` showing as skipped (pale)** in a green Airflow run is the
+  intended state — it is a `one_failed` watcher (D20).
+- **`helpfulness` nulls** are undefined, not missing (D5). Do not impute them.
+
+---
+
 ## 1. Project goals (from initial planning)
 
 Capstone project for a data engineering course. End-to-end pipeline over Sephora
@@ -148,8 +263,13 @@ Indexes on all four fact FK columns. **No `brand_key` on the fact table** (D11).
 | 9. Tests | **Done** — 51 pytest passing + 11 DAG assertions verified in-container |
 | 10. Documentation | **Done** — `docs/01`–`11` + index; 23 decisions logged |
 | 11. Reproducibility | **Done** — `setup.ps1`, 11 resumable steps; `.env.example` with working defaults |
+| — Dashboard polish | **Done, awaiting merge** — 6 commits on `dashboard-polish`: status strip, 3 query-param controls, `vw_rating_by_review_length`, data-quality panel, shared page shape. Source of D23 |
 | — Presentation deck | **Not started** — material ready, see `docs/README.md` |
 | — Screenshots | **Not captured** — filenames listed in `docs/screenshots/README.md` |
+
+Stages 1–11 are complete and verified against real runs; the numbers in section 7
+come from those runs, not from estimates. The only outstanding work is the last
+three rows. See **section 0** for the ordered to-do list.
 
 ---
 
@@ -207,7 +327,7 @@ Fill in from actual runs. Never estimate here — if it isn't measured, leave it
 | **raw → 3nf → staging** | 0 row gap on both products and reviews; all 6 integrity checks return 0 |
 | **3NF row counts** | brand 304 · category 174 · product 8,494 · author 503,216 · review 1,093,371 · skin_tone 13 · skin_type 4 · eye_color 5 · hair_color 7 |
 | **Staging row counts** | product 8,494 · review 1,093,371 (date range 2008-08-28 → 2023-03-21) |
-| raw → 3nf → staging reconciliation | _pending_ |
+| **raw → 3nf → staging reconciliation** | Products 8,494 → 8,494 → 8,494; reviews 1,093,371 → 1,093,371 → 1,093,371; **0 unexplained row gap** |
 | **Historical load** (`pipeline.py --mode historical`) | 1,043,868 fact rows inserted; dims 304 / 8,494 / 503,216 / 1,896 / 5,379. Fact load 62s |
 | **Idempotency, real case** (re-run full) | 1,043,868 offered, **0 inserted** everywhere |
 | **Incremental load** (`pipeline.py`) | watermark 2022-12-31 → 49,503 extracted, **49,503 inserted** |

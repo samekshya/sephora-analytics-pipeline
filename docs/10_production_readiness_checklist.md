@@ -7,7 +7,7 @@ practice rather than a script that happens to run.
 repository that proves it — a test, a migration, a measured run. Unchecked
 items are listed with a reason, never quietly dropped.
 
-Last verified: **2026-08-08**.
+Last verified: **2026-08-12**.
 
 ---
 
@@ -81,7 +81,7 @@ Last verified: **2026-08-08**.
 
 - [x] Index on every fact foreign key, plus the watermark column
 - [x] Indexes created deliberately with the reason stated in the DDL comment
-- [x] Views in the warehouse backing the dashboard (9), so logic is versioned rather than trapped in the app
+- [x] Views in the warehouse backing the dashboard (10), so logic is versioned rather than trapped in the app
 - [x] At least one view using **window functions** — `vw_review_volume_by_month` (rolling 3-month, cumulative, `LAG` growth)
 - [x] Bulk loading via `execute_values` with a tuned page size
 - [x] Chunked reads over a server-side cursor where memory would otherwise be the limit (D15)
@@ -108,7 +108,7 @@ Last verified: **2026-08-08**.
 - [x] Two invariants enforced as `CHECK` constraints, not just observed
 - [x] Quality checks run inside the DAG with visible pass/fail per table
 - [x] **Fault injection** — 15 cases proving the gate rejects bad data, not just accepts good
-- [x] **Real pytest suite** — 45 tests, unit and integration separated by marker
+- [x] **Real pytest suite** — 51 tests, unit and integration separated by marker
 - [x] Dashboard asserted against the warehouse it reads (`AppTest`)
 - [ ] **Coverage measurement** — not run. Test count is not coverage
 
@@ -134,7 +134,7 @@ Last verified: **2026-08-08**.
 
 - [x] README with setup instructions someone else could follow
 - [x] Problem statement and data source documentation with measured profiling
-- [x] Decision log written as decisions were made, not reconstructed at the end — 22 entries
+- [x] Decision log written as decisions were made, not reconstructed at the end — 23 entries
 - [x] Architecture diagram and schema documentation
 - [x] Explicit out-of-scope section
 - [x] Airflow runbook including how to read a failed run
@@ -154,7 +154,7 @@ Five, all deliberate:
 | External API enrichment | No business question needed data outside the source files |
 | Bridge table / many-to-many | The domain has one (`highlights`); it was measured and descoped for scope (D3). **Not** absent from the domain |
 | `EXPLAIN ANALYZE` capture | Indexes reasoned about and justified in DDL comments, but never benchmarked |
-| Coverage measurement | 45 tests exist and are documented by what they prove; percentage coverage was not measured |
+| Coverage measurement | 51 tests exist and are documented by what they prove; percentage coverage was not measured |
 | DAX measure | Not applicable — Streamlit chosen over Power BI (D18) |
 
 Nothing here is unchecked because it was forgotten.
