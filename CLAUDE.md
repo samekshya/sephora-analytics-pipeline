@@ -111,6 +111,12 @@ defaults. Source CSVs are **not** in git — `data/README.md` says where to get 
 - **`--mode historical` does not reset a full warehouse.** There is no truncate
   anywhere and every load is `ON CONFLICT DO NOTHING`. To reset for a demo:
   `DELETE FROM dw.fact_reviews WHERE submission_date >= '2023-01-01'`.
+- **`historical` is missing from the Airflow trigger dropdown on purpose.** The
+  DAG offers `TRIGGERABLE_LOAD_MODES` — full and incremental — because
+  historical is a baseline-rebuild tool, not something you orchestrate, and
+  against an already-full warehouse it inserts nothing and reads as a broken
+  run. It is still in `etl.extract.LOAD_MODES` and still runs locally with
+  `py pipeline.py --mode historical`.
 - **`cleanup_staging` showing green on a FAILED Airflow run** is the intended
   state. It is a **teardown**: it runs after failures so staging is not stranded,
   and Airflow excludes it from run-state calculation so it cannot report success

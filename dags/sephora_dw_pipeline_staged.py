@@ -34,8 +34,9 @@ The watermark is captured in extract_fact_to_staging, BEFORE this run writes
 anything to fact_reviews, and travels forward as a single small XCom. Re-reading
 it later in the run would read a value the same run had already advanced.
 
-Load mode is chosen from the UI via the `load_mode` Param: full, historical or
-incremental (see etl/extract.py for what each one means).
+Load mode is chosen from the UI via the `load_mode` Param: full or incremental
+(see etl/extract.py for what each one means). `historical` is deliberately not
+offered here — see TRIGGERABLE_LOAD_MODES.
 
 cleanup_staging is a TEARDOWN task (dotted edge above), which is what keeps a
 failed run from reporting success without needing a watcher task wired to
@@ -56,7 +57,7 @@ from etl.extract import (
     extract_brands, extract_products, extract_customers,
     extract_reviewer_profiles, extract_date_bounds,
     extract_reviews_for_mode, extract_lookup_dim, extract_brand_lookup,
-    get_watermark, LOAD_MODES, FULL, HISTORICAL, INCREMENTAL,
+    get_watermark, FULL, INCREMENTAL,
 )
 from etl.transform import (
     build_dim_brand, build_dim_product, build_dim_customer,
@@ -129,6 +130,14 @@ FACT_EXTRACT_COLUMNS = [
 # build_fact_reviews.
 FACT_TRANSFORMED_COLUMNS = FACT_COLUMNS
 
+# The trigger form offers a subset of etl.extract.LOAD_MODES. `historical` is
+# not a mode you orchestrate — it exists to rebuild the pre-2023 baseline before
+# demonstrating an incremental run, and `pipeline.py --mode historical` still
+# does exactly that. Offered in the UI it mostly gets triggered against an
+# already-full warehouse, where it inserts nothing (there is no truncate here
+# and every load is ON CONFLICT DO NOTHING) and reads as a broken run.
+TRIGGERABLE_LOAD_MODES = (FULL, INCREMENTAL)
+
 DIM_PRODUCT_COLUMNS = [
     "product_id", "product_name", "brand_key",
     "primary_category", "secondary_category", "tertiary_category",
@@ -151,13 +160,10 @@ DIM_PRODUCT_COLUMNS = [
         "load_mode": Param(
             INCREMENTAL,
             type="string",
-            enum=list(LOAD_MODES),
+            enum=list(TRIGGERABLE_LOAD_MODES),
             title="Load mode",
             description=(
                 "full: every review, no date bound. "
-                "historical: reviews before 2023-01-01 only — the demo "
-                "baseline, which deliberately holds later rows back so an "
-                "incremental run afterwards has real data to pick up. "
                 "incremental: only reviews after the warehouse watermark."
             ),
         )

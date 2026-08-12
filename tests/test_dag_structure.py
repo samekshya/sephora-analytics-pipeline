@@ -89,9 +89,10 @@ def test_retry_policy(dag):
   assert extract.retry_delay.total_seconds() == 300
 
 
-def test_load_mode_param_offers_three_modes(dag):
+def test_load_mode_param_offers_the_two_triggerable_modes(dag):
   param = dag.params.get_param("load_mode")
-  assert param.schema.get("enum") == ["full", "historical", "incremental"]
+  assert param.schema.get("enum") == ["full", "incremental"], (
+      "historical is a local baseline-rebuild tool, not something to orchestrate")
   assert param.value == "incremental", "default must be the safe, cheap mode"
 
 

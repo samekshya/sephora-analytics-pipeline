@@ -130,8 +130,8 @@ def main():
           f"retries={extract.retries}, delay={extract.retry_delay}")
 
     param = dag.params.get_param("load_mode")
-    check("load_mode_param_offers_three_modes",
-          param.schema.get("enum") == ["full", "historical", "incremental"]
+    check("load_mode_param_offers_two_triggerable_modes",
+          param.schema.get("enum") == ["full", "incremental"]
           and param.value == "incremental",
           f"default={param.value}, enum={param.schema.get('enum')}")
 

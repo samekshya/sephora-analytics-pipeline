@@ -53,25 +53,46 @@ In the UI: **DAGs → `sephora_dw_pipeline_staged` → Trigger** → set
 | `load_mode` | Loads | Use when |
 |---|---|---|
 | `full` | every review, no date bound | Building or rebuilding for real |
-| `historical` | reviews before 2023-01-01 (1,043,868) | **Demo step 1** |
-| `incremental` | reviews after the watermark | **Demo step 2**, and normal operation |
+| `incremental` | reviews after the watermark | **The demo**, and normal operation |
 
 Default is `incremental` — the cheap, safe option.
 
+> **`historical` is not in the dropdown.** It is a third mode in
+> `etl.extract.LOAD_MODES`, but it is a *baseline-rebuild tool*, not something
+> you orchestrate: it loads reviews before 2023-01-01 and holds the rest back so
+> an incremental run afterwards has real data to pick up. Triggered against a
+> warehouse that is already full — which is the state it is usually in — it
+> inserts nothing and looks like a broken run. Run it locally instead, with
+> `py pipeline.py --mode historical`. The DAG exposes only
+> `TRIGGERABLE_LOAD_MODES`.
+
 ### The demo sequence
 
-```
-1. Trigger with load_mode = historical    -> 1,043,868 rows, watermark ends 2022-12-31
-2. Trigger with load_mode = incremental   -> 49,503 rows,   watermark ends 2023-03-21
-3. Trigger with load_mode = incremental   -> 0 rows extracted, gate skipped, 0 inserted
+Set the baseline **before** you open Airflow, from a terminal:
+
+```powershell
+py pipeline.py --mode historical    # -> 1,043,868 rows, watermark ends 2022-12-31
 ```
 
-Run 3 is worth showing: it proves the watermark stops the pipeline doing work
+Then, in the UI:
+
+```
+1. Trigger with load_mode = incremental   -> 49,503 rows, watermark ends 2023-03-21
+2. Trigger with load_mode = incremental   -> 0 rows extracted, gate skipped, 0 inserted
+```
+
+Run 2 is worth showing: it proves the watermark stops the pipeline doing work
 that has already been done, and that an empty batch is a clean no-op rather
 than a failure.
 
-**To reset for a rehearsal** (destroys the warehouse fact data, keeps the OLTP
-side):
+**To reset for a rehearsal**, remove only the 2023 slice — this is what the
+`historical` baseline amounts to, and it is faster than reloading a million rows:
+
+```powershell
+docker exec leapfrog_sephora_postgres psql -U postgres -d sephora_dw -c "DELETE FROM dw.fact_reviews WHERE submission_date >= '2023-01-01';"
+```
+
+To start the fact table from empty instead:
 
 ```powershell
 docker exec leapfrog_sephora_postgres psql -U postgres -d sephora_dw -c "TRUNCATE dw.fact_reviews RESTART IDENTITY;"
@@ -282,7 +303,7 @@ PASS  cleanup_cannot_speak_for_the_run  ({'load_fact_from_staging'})
 PASS  every_task_can_fail_the_run  (set())
 PASS  cleanup_waits_for_every_staging_writer  (4 upstreams)
 PASS  retry_policy  (retries=2, delay=0:05:00)
-PASS  load_mode_param_offers_three_modes  (default=incremental, enum=['full', 'historical', 'incremental'])
+PASS  load_mode_param_offers_two_triggerable_modes  (default=incremental, enum=['full', 'incremental'])
 PASS  fact_is_split_into_four_stages
 PASS  product_waits_for_brand
 
