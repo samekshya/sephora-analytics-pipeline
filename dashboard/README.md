@@ -239,8 +239,9 @@ Expect **1,043,868** and a watermark of **2022-12-31**.
 2. Open <http://localhost:8081> (Airflow), DAG `sephora_dw_pipeline_staged` →
    **Trigger** → set `load_mode` to `incremental` → Trigger.
 3. Talk over it. The incremental run takes about **22 seconds**; the graph goes
-   green a task at a time. This is the moment to point at the failure watcher
-   and the `all_done` cleanup (D20).
+   green a task at a time. This is the moment to point at `cleanup_staging` —
+   the dotted teardown edge — and explain that it cleans up after failures
+   without being able to report success on the run's behalf (D24).
 4. Back on the dashboard, click **Refresh data** in the sidebar.
 5. The strip now reads **1,093,371** with **+49,503 since last refresh**, and
    the watermark has moved to **2023-03-21**. The BQ5 trend chart has grown

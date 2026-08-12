@@ -89,14 +89,16 @@ Last verified: **2026-08-12**.
 
 ## 9. Orchestration (Airflow)
 
-- [x] Full pipeline runs as a single DAG — 16 tasks
+- [x] Full pipeline runs as a single DAG — 15 tasks
 - [x] Explicit task dependencies, parallel dimension branches
 - [x] Fact split into extract / transform / quality / load for per-stage retry
 - [x] Retry policy configured (2 retries, 5-minute delay)
 - [x] Quality failures raise `AirflowFailException` so bad data fails fast instead of consuming the retry budget
 - [x] `cleanup_staging` with `trigger_rule="all_done"` so failed runs still clean up
-- [x] **Failure watcher** so `all_done` cleanup cannot leave a failed run reporting success (D20)
-- [x] Watcher wiring asserted by tests, not assumed
+- [x] **Cleanup marked as a teardown** so it cannot leave a failed run reporting success (D24, superseding D20's watcher)
+- [x] **Verified by failure injection**, not by reading the docs — a forced failure produced `upstream_failed` on the leaf, a green cleanup, and a **FAILED** run
+- [x] Teardown wiring asserted by tests, not assumed — including `on_failure_fail_dagrun is False`, the flag that would silently reinstate the bug
+- [x] Cleanup waits on every staging writer, closing a race that stranded 513,606 rows when the fact chain short-circuited
 - [x] Load mode selectable from the UI as an enum Param
 - [x] DAG re-runnable without duplicating data
 

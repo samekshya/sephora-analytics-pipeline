@@ -124,7 +124,7 @@ removals were cleaning and which were scope.
 | Partial `COPY` during ingest | Whole load rolls back inside one transaction; `raw` is unchanged |
 | A dimension key won't resolve | Row dropped, counted against a named reason; unexplained gaps raise `ReconciliationError` |
 | Bad data reaches the gate | `DataQualityError` → `AirflowFailException`; fails fast, does not consume the retry budget |
-| A DAG task fails | `cleanup_staging` still runs (`all_done`); `watch_for_failure` still marks the run **FAILED** |
+| A DAG task fails | `cleanup_staging` still runs (teardown, `all_done`) but is excluded from run state, so the run is still marked **FAILED** |
 | Task retried mid-write | Staging rows for that `batch_id` are deleted before re-staging, so a retry replaces rather than doubles |
 | Pipeline re-run entirely | `ON CONFLICT DO NOTHING` → 0 inserted; verified |
 

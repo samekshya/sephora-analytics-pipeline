@@ -45,12 +45,17 @@ and ON CONFLICT DO NOTHING.
 
 ## Slide 6 — Airflow proof, not just a diagram (1:10)
 
-The DAG has 16 tasks. Dimensions run in parallel; product waits for brand; the
+The DAG has 15 tasks. Dimensions run in parallel; product waits for brand; the
 fact path is staged into extract, transform, quality, and load. The controlled
-verification re-offered the historical population successfully in 164 seconds,
+verification re-offered the historical population successfully in 134 seconds,
 then removed only the 2023 fact slice. Incremental restored all 49,503 rows in
-27 seconds. In both runs 15 tasks succeeded and the one_failed watcher was
-correctly skipped.
+22 seconds. The detail worth pausing on is failure, not success: cleanup runs
+with all_done so a failed run still clears its staging rows, which originally
+made it the only leaf task and let a failed extract report a green run over an
+empty warehouse. Marking it a teardown excludes it from run state, so the leaf
+becomes load_fact and the run goes red on its own. I proved it by forcing a
+failure rather than trusting the documentation — and that run exposed a race
+that stranded half a million staging rows, which is now fixed and tested.
 
 ## Slide 7 — What the dashboard actually tells us (1:25)
 

@@ -1,7 +1,7 @@
 # 06 — Airflow Runbook
 
 Airflow **3.3.0**, LocalExecutor, Docker Compose. One DAG:
-`sephora_dw_pipeline_staged`, **16 tasks**.
+`sephora_dw_pipeline_staged`, **15 tasks**.
 
 ---
 
@@ -108,9 +108,7 @@ that a no-op.
                                 │                                           │
                                 └──────────► transform_fact_staged ◄────────┘
                                                      │
-                                             cleanup_staging  (all_done)
-                                                     │
-                                            watch_for_failure (one_failed)
+                                    cleanup_staging  (teardown, all_done)
 ```
 
 Three dimension branches run in **parallel**. `dim_product` waits on
@@ -134,11 +132,17 @@ double everything the first attempt managed to stage.
 
 ## Reading a failed run
 
-### `watch_for_failure` is red
+### The run is red but no task shows `failed`
 
-That is the watcher doing its job. **The real failure is elsewhere** — look for
-the other red task in the Graph view. The watcher's own log says only that
-something upstream failed.
+Look for **`upstream_failed`** (orange), not `failed` (red). The run's state comes
+from `load_fact_from_staging`, which inherits `upstream_failed` from whatever
+actually broke. Walk back up the chain to the one genuinely red task.
+
+### `cleanup_staging` is green on a failed run
+
+That is correct and intended. Cleanup is a **teardown** task: it runs after a
+failure so staging rows are not stranded, and it is excluded from the run's state
+calculation so its success cannot mask the failure (**D24**).
 
 ### `quality_check_fact_staged` failed
 
@@ -192,10 +196,10 @@ even `all_done` didn't fire; deleting by `batch_id` is safe.
 
 ---
 
-## The failure watcher
+## Why a failed run reports failed
 
 `cleanup_staging` must run after a failure, so it uses `trigger_rule="all_done"`.
-That made it the DAG's only **leaf** task — and Airflow derives a DAG run's
+That made it the DAG's last **leaf** task — and Airflow derives a DAG run's
 state from its leaves. The result was a trap:
 
 > extract fails → cleanup still runs → cleanup succeeds → the only leaf is
@@ -204,22 +208,29 @@ state from its leaves. The result was a trap:
 A green run that loaded nothing is worse than a red one, because nobody
 investigates it.
 
-`watch_for_failure` fixes this. It carries `trigger_rule="one_failed"` and every
-other task is wired upstream of it:
+Marking cleanup `.as_teardown()` fixes this. Airflow excludes ignorable teardowns
+when deciding which tasks count toward run state, so the leaf becomes
+`load_fact_from_staging`:
 
-| Scenario | Rule satisfied? | Watcher | DAG run |
-|---|---|---|---|
-| Any task failed | yes | **runs → raises** | **FAILED** |
-| Nothing failed | no | **skipped** | SUCCESS |
+| Scenario | Effective leaf state | DAG run |
+|---|---|---|
+| Any task failed | `upstream_failed` propagates to `load_fact_from_staging` | **FAILED** |
+| Nothing failed | `success` | SUCCESS |
 
-A skipped leaf does not fail a run, so clean runs stay green. `retries=0`:
-retrying a task whose only job is to report an existing failure would just
-delay the red status.
+Cleanup still runs in both cases; it simply no longer speaks for the run.
 
-The upstream list is built from task **objects**, not typed-out names, because
-`one_failed` evaluates *direct* upstreams only — a task missing from that list
-is a failure the watcher cannot see.
-`tests/test_dag_structure.py::test_watcher_watches_every_other_task` asserts it.
+> **Do not set `on_failure_fail_dagrun=True`.** It makes cleanup non-ignorable,
+> which makes it the sole effective leaf again and reinstates the exact bug above.
+> `test_cleanup_does_not_fail_the_dagrun` pins it to `False`.
+
+This replaced a `watch_for_failure` watcher task that had to be wired downstream
+of all 15 other tasks — 15 of the DAG's 33 edges existed only for failure
+reporting. Same guarantee, **15 tasks and 21 edges** instead of 16 and 33 (**D24**,
+superseding D20).
+
+Cleanup waits on every staging **writer**, not just the fact chain, because a
+short-circuiting fact chain otherwise lets it run while the dimension branches are
+still staging — which stranded 513,606 rows in testing. See D24.
 
 ---
 
@@ -230,11 +241,14 @@ deliberate exceptions:
 
 | Task | Retries | Why |
 |---|---|---|
-| `watch_for_failure` | 0 | Reports an existing failure; retrying delays the truth |
 | `quality_check_fact_staged` | 2 configured, but raises `AirflowFailException` | Fails fast — bad data won't pass on retry |
 
 Retries are worth having on the extract and load tasks, where a dropped
 connection or a transient lock is plausible.
+
+> Note that `retries=2, retry_delay=5m` means a genuinely failing extract takes
+> **~11 minutes** to reach its final state. A run that looks stuck on a red-ish
+> task is usually just waiting out a retry delay.
 
 ---
 
@@ -260,15 +274,15 @@ docker exec leapfrog_airflow_scheduler python /tmp/verify_dag_in_container.py
 
 ```
 PASS  dag imports without errors
-PASS  expected_tasks_present  (16 tasks)
-PASS  watcher_uses_one_failed
-PASS  watcher_does_not_retry
-PASS  watcher_is_the_only_leaf  ({'watch_for_failure'})
-PASS  watcher_watches_every_other_task  (15 upstreams)
-PASS  cleanup_runs_even_after_failure  (all_done)
-PASS  cleanup_precedes_watcher
+PASS  expected_tasks_present  (15 tasks; missing=set(), unexpected=set())
+PASS  cleanup_runs_even_after_failure  (all_done_setup_success)
+PASS  cleanup_is_a_teardown
+PASS  cleanup_does_not_fail_the_dagrun  (True would make cleanup the sole effective leaf again)
+PASS  cleanup_cannot_speak_for_the_run  ({'load_fact_from_staging'})
+PASS  every_task_can_fail_the_run  (set())
+PASS  cleanup_waits_for_every_staging_writer  (4 upstreams)
 PASS  retry_policy  (retries=2, delay=0:05:00)
-PASS  load_mode_param_offers_three_modes
+PASS  load_mode_param_offers_three_modes  (default=incremental, enum=['full', 'historical', 'incremental'])
 PASS  fact_is_split_into_four_stages
 PASS  product_waits_for_brand
 

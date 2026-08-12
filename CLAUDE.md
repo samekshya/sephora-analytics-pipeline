@@ -16,22 +16,19 @@ actually stands right now*.
 
 **Stages 1–11 of the pipeline are built, run, and verified.** The warehouse holds
 1,093,371 fact rows, Airflow runs both modes green, the dashboard works, 51 tests
-pass, and the screenshots plus eight-minute deck are complete. Final validation
-passed and the completed dashboard branch is merged into local `main`.
+pass, and the eight-minute deck is complete. The DAG was then simplified from 16
+tasks / 33 edges to **15 / 21** by replacing the failure watcher with a teardown
+(**D24**), which is verified by an injected failure and fixed a latent race.
 
 ### Where the code is right now
 
 | | |
 |---|---|
-| Current branch | `main` at `affaf7a` — completion merge recorded locally |
-| Dashboard branch | `dashboard-polish` at `2113a23` — retained as the completed phase branch |
-| Remote state | `origin/main` remains at `90edfab`; push `dashboard-polish` and `main` after remote-write approval |
-| Completion pass | **Complete locally** — documentation, live DAG proof, screenshots, deck, final validation, and merge are done |
-
-The completed dashboard work is the source of **D23** and the 10th analytics
-view. It has already passed the host integration suite; this completion pass
-adds fresh runtime evidence and presentation assets without changing the
-pipeline's established behavior.
+| Current branch | `dag-simplification` — the D24 work, **not yet merged** |
+| `main` | `e2a4323` — the completion merge, local only |
+| Remote state | `origin/main` still at `90edfab`; **nothing since has been pushed** |
+| Screenshots | **Two Airflow captures are STALE** — they show the old 16-task graph with `watch_for_failure`. Re-capture before presenting; see `docs/screenshots/README.md` |
+| Deck | `build_deck.ps1` is updated for D24 and now uses all four screenshots. **Needs a rebuild** once the new captures exist (PowerPoint must be closed) |
 
 ### Working conventions the user expects
 
@@ -53,7 +50,7 @@ clean.py            stage 2 — data/raw/*.csv → data/processed/*.csv, drops r
 ingest.py           stage 3 — COPY data/processed → raw schema, asserts counts against clean.py
 pipeline.py         local runner: --mode full | historical | incremental
 etl/                extract · transform · reconcile · quality · load · staging  (2-space indent)
-dags/               sephora_dw_pipeline_staged.py — the 16-task DAG
+dags/               sephora_dw_pipeline_staged.py — the 15-task DAG
 sql/init/           create both databases
 sql/oltp/           01_raw_schema.sql + 15 timestamped migrations (raw → 3nf → staging)
 sql/datawarehouse/  7 numbered migrations — 5 dims + fact_reviews
@@ -92,9 +89,15 @@ defaults. Source CSVs are **not** in git — `data/README.md` says where to get 
 
 ### What remains — the actual to-do list
 
-The implementation and local handoff are complete. The only remaining repository
-operation is to push `dashboard-polish` and `main` to the configured GitHub remote
-after explicit remote-write approval.
+1. **Re-capture the two Airflow screenshots.** The committed ones show the old
+   16-task graph and are now wrong. Fresh green runs already exist to capture:
+   `teardown_historical_20260812` (success, 134s) and
+   `teardown_incremental_20260812` (success, 22s). Worth adding a third from
+   `failure_proof_v2_20260812` — a **failed** run with `cleanup_staging` green,
+   which is the most persuasive evidence in the set.
+2. **Rebuild the deck** — `.\presentation\build_deck.ps1`, with PowerPoint closed.
+3. **Merge `dag-simplification`**, then push. `origin` is 11+ commits behind.
+4. Optional: `docs/07_dashboard_insights.md` predates the review-length view.
 
 ### Things that look like bugs and are not
 
@@ -105,8 +108,14 @@ after explicit remote-write approval.
 - **`--mode historical` does not reset a full warehouse.** There is no truncate
   anywhere and every load is `ON CONFLICT DO NOTHING`. To reset for a demo:
   `DELETE FROM dw.fact_reviews WHERE submission_date >= '2023-01-01'`.
-- **`watch_for_failure` showing as skipped (pale)** in a green Airflow run is the
-  intended state — it is a `one_failed` watcher (D20).
+- **`cleanup_staging` showing green on a FAILED Airflow run** is the intended
+  state. It is a **teardown**: it runs after failures so staging is not stranded,
+  and Airflow excludes it from run-state calculation so it cannot report success
+  on the run's behalf (D24). Do not set `on_failure_fail_dagrun=True` to "improve"
+  this — that makes cleanup the sole effective leaf again and reinstates the
+  exact bug D20 was written about.
+- **A red run with no `failed` task** — look for `upstream_failed` (orange). Run
+  state comes from `load_fact_from_staging`, which inherits it.
 - **`helpfulness` nulls** are undefined, not missing (D5). Do not impute them.
 
 ---
@@ -195,7 +204,7 @@ sephora_dw     dw schema — 5 dimensions + fact_reviews + 10 analytics views
 Streamlit dashboard (2 pages, live connection)
 ```
 
-Orchestrated by `dags/sephora_dw_pipeline_staged.py` (16 tasks) or run locally with
+Orchestrated by `dags/sephora_dw_pipeline_staged.py` (15 tasks) or run locally with
 `pipeline.py --mode full|historical|incremental`.
 
 Grain of `fact_reviews`: **one row per review.**
@@ -247,11 +256,11 @@ Indexes on all four fact FK columns. **No `brand_key` on the fact table** (D11).
 | 3. OLTP raw + 3NF + staging, `ingest.py` | **Done** — 15 migrations applied, reconciliation clean, 0 row gap end to end |
 | 4. DW star schema migrations | **Done** — 7 migrations, 5 dims + fact_reviews |
 | 5. ETL package + `pipeline.py` | **Done** — three named load modes (D17), row reconciliation (D19), severity-aware quality gate (D21) |
-| 6. Airflow staged DAG | **Done** — 16 tasks incl. the failure watcher (D20); historical and incremental runs both green |
+| 6. Airflow staged DAG | **Done** — 15 tasks; cleanup is a teardown, replacing the failure watcher (D24, superseding D20); historical, incremental and an injected-failure run all verified |
 | 7. Analytics views | **Done** — 10 views (one uses window functions), split from validation SQL (D22) |
 | 8. Streamlit dashboard | **Done** — 2 pages, live connection, 3 slider-driven query params, live status strip and data-quality panel (D18, D23) |
 | 9. Tests | **Done** — 51 pytest passing + 11 DAG assertions verified in-container |
-| 10. Documentation | **Done** — `docs/01`–`11` + index; 23 decisions logged |
+| 10. Documentation | **Done** — `docs/01`–`11` + index; 24 decisions logged |
 | 11. Reproducibility | **Done** — `setup.ps1`, 11 resumable steps; `.env.example` with working defaults |
 | — Dashboard polish | **Done and merged** — status strip, 3 query-param controls, shareable Deep-dive URL, `vw_rating_by_review_length`, data-quality panel, shared page shape. Source of D23 |
 | — Presentation deck | **Done** — 8 timed slides; editable PowerPoint, PDF, embedded notes, and reproducible builder under `presentation/` |
@@ -325,10 +334,12 @@ Fill in from actual runs. Never estimate here — if it isn't measured, leave it
 | **Quality fault injection** (`tests/unit/test_quality.py`) | 15 collected cases, all passing |
 | **Airflow, historical** | All tasks green; 1,043,868 fact rows. `load_fact_from_staging` SIGKILLed on the first attempt and succeeded after chunking (D15) |
 | **Airflow, incremental** | All tasks green in **22 seconds**; 49,503 rows → 1,093,371 total |
-| **Airflow completion verification (2026-08-12)** | `verification_historical_20260812`: success, 15 success + skipped watcher, **164s**. Controlled reset removed exactly 49,503 2023 rows; `verification_incremental_20260812` restored all rows in **27s**. Final fact count 1,093,371; watermark 2023-03-21; all 6 DAG staging tables empty |
-| **Staging cleanup** | All 6 staging tables at 0 rows after both runs (`trigger_rule="all_done"`) |
+| **Airflow verification, watcher design (2026-08-12)** | `verification_historical_20260812`: success, 15 success + skipped watcher, **164s**. `verification_incremental_20260812` restored 49,503 rows in **27s**. Superseded by the teardown runs below |
+| **Airflow verification, teardown design (2026-08-12, D24)** | `teardown_historical_20260812`: success, **134s**. Controlled reset removed exactly 49,503 2023 rows; `teardown_incremental_20260812` restored them in **22s**. Final fact count 1,093,371; watermark 2023-03-21; all 6 staging tables empty |
+| **Failure injection (2026-08-12, D24)** | `extract_fact_to_staging` forced to `failed`. Result: 3 tasks `upstream_failed`, `cleanup_staging` **success**, **DAG run FAILED** — a green cleanup beside a red run. First attempt stranded **513,606** staging rows through a pre-existing race (cleanup waited only on `load_fact`); after wiring cleanup to all 4 staging writers, the re-run left all 6 tables at **0** |
+| **Staging cleanup** | All 6 staging tables at 0 rows after every run, including the injected-failure run |
 | **Analytics views** | **10** views created; all 8 full-population views reconcile to 1,093,371 exactly (`vw_rating_by_skin_type` and `vw_hype_vs_reality` are deliberate subsets) |
-| **DAG structure** | 16 tasks; 11/11 assertions pass in-container (watcher is the only leaf, watches all 15 others) |
+| **DAG structure** | 15 tasks, 21 edges; 11/11 assertions pass in-container (`load_fact_from_staging` is the only effective leaf; every task has a propagation path to it) |
 | **Final test suite (2026-08-12)** | **51 passed**, 1 skipped locally (Airflow is verified separately in-container); 31 non-failing pandas DBAPI compatibility warnings |
 | **Migration idempotency** | All 22 migrations re-applied against a fully-loaded database with no error |
 | **Dashboard** | Both pages render via `AppTest`; KPI row equals `SELECT count(*), avg(rating) FROM dw.fact_reviews`. Each of the 3 Deep-dive sliders asserted live individually (hype gap 1,660 → 484 products, price 1,660 → 935, skin tones 12 → 14 at floor 0) |
@@ -409,9 +420,17 @@ Full reasoning lives in `docs/09_decision_log.md`. Summary:
 - **D19** Every dropped row is counted against a named reason, zeros included, and an
   unexplained gap raises `ReconciliationError`. Dropping rows is allowed; dropping them
   without saying how many and why is not.
-- **D20** `watch_for_failure` (`one_failed`, the DAG's only leaf). `cleanup_staging` uses
-  `all_done` so failures still clean up — which made it the only leaf, and Airflow derives run
-  state from leaves, so a failed extract produced a **green** run over an empty warehouse.
+- **D20** *(superseded by D24)* `cleanup_staging` uses `all_done` so failures still clean up —
+  which made it the only leaf, and Airflow derives run state from leaves, so a failed extract
+  produced a **green** run over an empty warehouse. First fixed with a `watch_for_failure`
+  watcher wired downstream of all 15 other tasks.
+- **D24** The watcher is replaced by marking `cleanup_staging` `.as_teardown()`. Airflow
+  excludes ignorable teardowns from run-state calculation, so `load_fact_from_staging` becomes
+  the sole effective leaf and failure propagates to it — same guarantee, **15 tasks / 21 edges**
+  instead of 16 / 33. `on_failure_fail_dagrun` **must stay False**: setting it True makes
+  cleanup the sole leaf again and reinstates D20's bug. Proven by injecting a failure, which
+  also exposed a pre-existing race that stranded 513,606 staging rows; cleanup now waits on
+  every staging writer.
 - **D21** Quality checks carry a severity. `hard_failure` halts before any write; `warning`
   logs and continues. All-fatal sounds rigorous but means the only checks worth writing are
   ones you would stop production for.
@@ -436,7 +455,7 @@ Full reasoning lives in `docs/09_decision_log.md`. Summary:
 | Junk dimension `dim_reviewer_profile` | The reference had no analog; four correlated low-cardinality attributes is the textbook case |
 | `dim_customer` carries no descriptive attributes | See D2 |
 | **Streamlit instead of Power BI** | The dashboard becomes part of the repo — versioned, diffable, testable in CI, reproducible with one command. The cost (no DAX, no Power BI model demonstrated) is stated in D18 rather than hidden |
-| **A DAG failure watcher** | The reference's DAG had no `all_done` cleanup task, so it never hit the bug where a failed run reports success (D20) |
+| **A teardown-based failure guarantee** | The reference's DAG had no `all_done` cleanup task, so it never hit the bug where a failed run reports success (D20 → D24) |
 | **Enforced row reconciliation** | The reference dropped unmatched rows with a log line. Counting every drop against a named reason and raising on an unexplained gap is stricter than the pattern taught (D19) |
 
 ---

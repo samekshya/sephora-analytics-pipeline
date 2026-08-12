@@ -4,10 +4,11 @@ test_dag_structure.py
 Structural assertions about the Airflow DAG.
 
 These do not run the pipeline. They prove the DAG is wired the way the design
-claims — most importantly that the failure watcher is present, is the only
-leaf, and watches everything. That property is easy to break by adding a task
-and forgetting to wire it to the watcher, and the failure mode is invisible:
-the DAG keeps working, and silently stops reporting failures.
+claims — most importantly that cleanup_staging is a teardown and therefore
+cannot report success on a failed run's behalf. That property is easy to break
+(marking cleanup as an ordinary task, or passing on_failure_fail_dagrun=True),
+and the failure mode is invisible: the DAG keeps working, and silently stops
+reporting failures.
 
 Skipped when airflow isn't importable (it lives in the container, not
 necessarily in the local venv):
@@ -35,7 +36,15 @@ EXPECTED_TASKS = {
   "extract_fact_to_staging", "transform_fact_staged",
   "quality_check_fact_staged", "load_fact_from_staging",
   "cleanup_staging",
-  "watch_for_failure",
+}
+
+# The staging-writing branches. cleanup must wait for all of them, not just the
+# fact chain — see test_cleanup_waits_for_every_staging_writer.
+STAGING_WRITER_LOADS = {
+  "load_product_from_staging",
+  "load_customer_from_staging",
+  "load_reviewer_profile_from_staging",
+  "load_fact_from_staging",
 }
 
 
@@ -87,51 +96,86 @@ def test_load_mode_param_offers_three_modes(dag):
 
 
 # --------------------------------------------------------------------------
-# The cleanup / watcher interaction — the reason this file exists
+# The cleanup teardown — the reason this file exists
 # --------------------------------------------------------------------------
 
+def _is_effective_leaf(dag, task):
+  """Reimplements Airflow's DagRun._tis_for_dagrun_state leaf rule.
+
+  A task counts toward DAG run state only if every downstream is an ignorable
+  teardown and it is not itself one. Copied deliberately rather than imported:
+  these tests must fail loudly if Airflow ever changes the rule under us.
+  """
+  for down_id in task.downstream_task_ids:
+    down = dag.get_task(down_id)
+    if not down.is_teardown or down.on_failure_fail_dagrun:
+      return False
+  return not task.is_teardown or task.on_failure_fail_dagrun
+
+
 def test_cleanup_runs_even_after_failure(dag):
-  """all_done, so a failed run still cleans up its staging rows."""
-  assert _rule(dag.get_task("cleanup_staging")) == "all_done"
+  """Teardown trigger rules fire once upstreams are done, failed included."""
+  assert _rule(dag.get_task("cleanup_staging")).startswith("all_done")
 
 
-def test_watcher_uses_one_failed(dag):
-  assert _rule(dag.get_task("watch_for_failure")) == "one_failed"
+def test_cleanup_is_a_teardown(dag):
+  assert dag.get_task("cleanup_staging").is_teardown
 
 
-def test_watcher_does_not_retry(dag):
-  """Retrying a task whose only job is reporting an existing failure would
-  just delay the red status."""
-  assert dag.get_task("watch_for_failure").retries == 0
-
-
-def test_watcher_is_the_only_leaf(dag):
+def test_cleanup_cannot_speak_for_the_run(dag):
   """THE critical assertion.
 
   Airflow derives a DAG run's state from its leaf tasks. cleanup_staging runs
-  with all_done so it succeeds even when an upstream task failed — if it were
-  a leaf, a failed run would report SUCCESS. The watcher must be the only leaf
-  for DAG state to reflect failure.
+  even when an upstream failed — as an ordinary task it would be the only leaf,
+  and its success would report SUCCESS over a run that loaded nothing. Marking
+  it a teardown removes it from that calculation.
   """
-  leaves = {t.task_id for t in dag.tasks if not t.downstream_task_ids}
-  assert leaves == {"watch_for_failure"}, (
-    f"leaves are {leaves}; any leaf other than the watcher can mask a failure")
+  leaves = {t.task_id for t in dag.tasks if _is_effective_leaf(dag, t)}
+  assert leaves == {"load_fact_from_staging"}, (
+    f"effective leaves are {leaves}; cleanup_staging must not be among them")
 
 
-def test_watcher_watches_every_other_task(dag):
-  """trigger_rule evaluates DIRECT upstreams only, so a task missing from the
-  watcher's upstream set is a failure the watcher cannot see."""
-  watcher = dag.get_task("watch_for_failure")
-  everything_else = {t.task_id for t in dag.tasks} - {"watch_for_failure"}
+def test_cleanup_does_not_fail_the_dagrun(dag):
+  """on_failure_fail_dagrun MUST stay False.
 
-  assert watcher.upstream_task_ids == everything_else, (
-    f"not watched: {everything_else - watcher.upstream_task_ids}")
+  Setting it True to make cleanup's own failure count would make cleanup
+  non-ignorable, which makes it the sole effective leaf again — reinstating
+  exactly the bug this design exists to prevent.
+  """
+  assert dag.get_task("cleanup_staging").on_failure_fail_dagrun is False
 
 
-def test_cleanup_precedes_watcher(dag):
-  """Cleanup must have run before the watcher fails the run, or a failed run
-  could leave staging rows behind."""
-  assert "watch_for_failure" in dag.get_task("cleanup_staging").downstream_task_ids
+def test_every_task_can_fail_the_run(dag):
+  """Any task's failure must reach the effective leaf, or it is invisible.
+
+  Replaces the old 'watcher watches everything' assertion: propagation through
+  upstream_failed does the job the watcher's 15 edges used to do.
+  """
+  def reaches_leaf(task_id, seen=None):
+    seen = seen if seen is not None else set()
+    if task_id == "load_fact_from_staging":
+      return True
+    if task_id in seen:
+      return False
+    seen.add(task_id)
+    return any(reaches_leaf(d, seen)
+               for d in dag.get_task(task_id).downstream_task_ids)
+
+  unwatched = {t.task_id for t in dag.tasks
+               if t.task_id not in ("load_fact_from_staging", "cleanup_staging")
+               and not reaches_leaf(t.task_id)}
+  assert not unwatched, f"failures invisible to DAG state: {unwatched}"
+
+
+def test_cleanup_waits_for_every_staging_writer(dag):
+  """Regression test for a race found by failure injection.
+
+  With load_fact as cleanup's only upstream, a fact chain that short-circuits
+  to upstream_failed let cleanup run while the dimension branches were still
+  staging — it deleted nothing and stranded 513,606 rows carrying that run's
+  own batch_id.
+  """
+  assert dag.get_task("cleanup_staging").upstream_task_ids == STAGING_WRITER_LOADS
 
 
 # --------------------------------------------------------------------------

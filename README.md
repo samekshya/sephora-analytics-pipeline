@@ -98,7 +98,7 @@ reads. The warehouse then denormalizes deliberately — that contrast is the poi
 | OLTP `raw` + `3nf` + `staging` | Built, loaded, reconciled |
 | Star schema warehouse | Built, loaded, verified |
 | ETL package + `pipeline.py` | Complete — three modes, reconciliation, idempotency all verified |
-| Airflow staged DAG | Complete — 16 tasks, failure watcher, both modes green |
+| Airflow staged DAG | Complete — 15 tasks, cleanup teardown, both modes green |
 | Analytics views | Complete — 10 views, all full-population views reconciling to `fact_reviews` |
 | Streamlit dashboard | Complete — 2 pages, live, smoke-tested against the warehouse |
 | Tests | 51 passing + 11 DAG assertions verified in-container |
@@ -260,9 +260,15 @@ flowchart LR
     DD --> TF
 
     TF --> QF[quality gate] --> LF[load fact]
-    LF --> CLEAN[cleanup staging]
-    CLEAN -. "all 15 task states are direct upstream" .-> WATCH[watch for failure]
+
+    LF -. teardown .-> CLEAN["cleanup staging<br/>(teardown)"]
+    LP -. teardown .-> CLEAN
+    LC -. teardown .-> CLEAN
+    LR -. teardown .-> CLEAN
 ```
+
+Every edge above is a real dependency — there is no failure-reporting plumbing in the graph.
+`load_fact` is the only **effective leaf**, so the run's state is its state.
 
 Three dimension branches run in parallel; `product` waits on `brand` for the foreign key. The
 fact table is split into four staged tasks so each retries independently and the Graph view
@@ -271,10 +277,12 @@ names the stage that failed rather than showing one red box.
 Each dimension pair writes through a staging table scoped by `batch_id = run_id`, so no
 row-level data crosses task boundaries via XCom — XCom is metadata storage, not a data channel.
 
-`cleanup_staging` uses `trigger_rule="all_done"`, so a failed run still clears its own rows.
-The watcher uses `one_failed`, receives **all 15 other tasks as direct
-upstreams**, and is the DAG's only leaf. The diagram collapses those 15 watcher
-edges into the dashed annotation so the execution path remains readable.
+`cleanup_staging` uses `trigger_rule="all_done"`, so a failed run still clears its own rows,
+and is marked as a **teardown** so that cleaning up cannot be mistaken for succeeding.
+Airflow excludes ignorable teardowns from run-state calculation, which leaves
+`load_fact_from_staging` as the only effective leaf — so any upstream failure reaches it as
+`upstream_failed` and the run goes red. This replaced a watcher task that needed an edge from
+all 15 other tasks; the DAG went from 16 tasks and 33 edges to **15 and 21**. **D24**.
 
 ![Verified incremental Airflow run](docs/screenshots/airflow_incremental_run.png)
 
@@ -434,8 +442,10 @@ they were actually recorded. **D2**, and the single most important decision here
 
 **A failed DAG run now reports failure.** `cleanup_staging` uses `trigger_rule="all_done"` so
 it cleans up after a failure — which made it the only leaf task, and Airflow derives run state
-from leaves. A failed extract therefore produced a *green* run over an empty warehouse.
-`watch_for_failure` (`one_failed`, the only leaf) fixes it. **D20**.
+from leaves. A failed extract therefore produced a *green* run over an empty warehouse. Fixed
+first with a watcher task (**D20**), then more cheaply by marking cleanup a **teardown**, which
+excludes it from run state and removes 12 edges. Verified by forcing a real failure, not by
+trusting the docs. **D24**.
 
 **Three load modes, because `--full-reload` wasn't one.** It stopped at 2023-01-01 — a
 historical baseline whose name claimed otherwise, and there was no way to load everything in
@@ -489,7 +499,7 @@ pipeline.py                      local runner: --mode full|historical|incrementa
 docker-compose.yml               project Postgres (host port 5434)
 docker-compose-airflow.yml       Airflow 3.3.0, LocalExecutor (port 8081)
 dags/
-  sephora_dw_pipeline_staged.py  staged DAG, 16 tasks
+  sephora_dw_pipeline_staged.py  staged DAG, 15 tasks
 etl/
   extract.py                     staging -> DataFrames, three load modes
   transform.py                   key resolution, derived columns, counted drops

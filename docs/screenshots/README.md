@@ -5,30 +5,48 @@ documents link to them by name.
 
 | Filename | What to capture |
 |---|---|
-| `airflow_historical_run.png` | Graph view of a `load_mode = historical` run, all tasks green, `watch_for_failure` **skipped** (pale, not red) |
-| `airflow_incremental_run.png` | Graph view of a `load_mode = incremental` run. Worth including the duration — the incremental run finishes in ~22 seconds against ~4 minutes for historical |
+| `airflow_historical_run.png` | Graph view of a `load_mode = historical` run, all 15 tasks green |
+| `airflow_incremental_run.png` | Graph view of a `load_mode = incremental` run. Worth including the duration — incremental finishes in ~22 seconds against ~2 minutes for historical |
 | `streamlit_overview.png` | Dashboard page 1: the KPI row plus the volume-over-time chart |
 | `streamlit_analysis.png` | Dashboard page 2: the price-band chart and the hype-vs-reality scatter |
 
-All four required captures were refreshed on **2026-08-12** from the live
-project environment:
+> ## ⚠ The two Airflow captures are STALE
+>
+> They were taken on 2026-08-12 from the **16-task** DAG and show
+> `watch_for_failure`, which no longer exists — the failure watcher was replaced
+> by a teardown (**D24**). The graph in those images does not match the code.
+>
+> **Re-capture both before presenting.** The runs already exist — nothing needs
+> re-running, just open each URL and capture with `Win + Shift + S`:
+>
+> | Save as | Open | Result |
+> |---|---|---|
+> | `airflow_historical_run.png` | [`…/runs/teardown_historical_20260812`](http://localhost:8081/dags/sephora_dw_pipeline_staged/runs/teardown_historical_20260812) | success, **134s** |
+> | `airflow_incremental_run.png` | [`…/runs/teardown_incremental_20260812`](http://localhost:8081/dags/sephora_dw_pipeline_staged/runs/teardown_incremental_20260812) | success, **22s** |
+> | `airflow_failed_run.png` | [`…/runs/failure_proof_v2_20260812`](http://localhost:8081/dags/sephora_dw_pipeline_staged/runs/failure_proof_v2_20260812) | **FAILED** — 3 `upstream_failed`, cleanup green |
+>
+> Start Airflow first if it is down:
+> `docker compose -f docker-compose-airflow.yml up -d`
+>
+> The two Streamlit captures are **still accurate** — the dashboard and the data
+> behind it are unchanged (1,093,371 rows, watermark 2023-03-21).
 
-- `airflow_historical_run.png` — run `verification_historical_20260812`,
-  success, **164 seconds**, 15 successful tasks + skipped watcher.
-- `airflow_incremental_run.png` — run `verification_incremental_20260812`,
-  success, **27 seconds**, 15 successful tasks + skipped watcher.
-- `streamlit_overview.png` — live 1,093,371-row warehouse, KPI strip and both
-  monthly trend charts fully rendered.
-- `streamlit_analysis.png` — live Deep dive with hype scatter, ranked product
-  tables, and price analysis visible.
+**A third Airflow capture is now available and worth taking**: run
+`failure_proof_v2_20260812` is a genuinely **FAILED** run showing three tasks
+`upstream_failed`, `cleanup_staging` **green**, and the run marked FAILED. Save it
+as `airflow_failed_run.png`. It demonstrates the D20/D24 guarantee rather than
+describing it — a green cleanup sitting beside a red run is the exact case that
+used to report success.
 
 ## Two worth capturing beyond the required four
 
-- **`airflow_watcher_failed.png`** — a run where a task failed, showing
-  `watch_for_failure` **red** and the DAG marked FAILED. This is the single
-  most persuasive screenshot in the set: it demonstrates the bug that was fixed
-  rather than describing it. Force one by pointing `SRC_CONN_ID` at a
-  nonexistent database, or stopping Postgres mid-run.
+- **`airflow_failed_run.png`** — see the note above; the run already exists.
+  To force a fresh one, note that the Airflow connections come from **environment
+  variables** in `docker-compose-airflow.yml`, so `airflow connections add` will
+  not override them. Either stop Postgres mid-run, or pause the DAG, trigger it,
+  set one task's state to `failed` in the metadata database, and unpause.
+  Retries are 2 × 5 minutes, so a genuinely failing task takes ~11 minutes to
+  settle.
 - **`validation_output.png`** — terminal output of
   `sql/validation/dashboard_checks.sql` showing every view at
   `diff_from_fact = 0`. Proof the dashboard numbers reconcile.

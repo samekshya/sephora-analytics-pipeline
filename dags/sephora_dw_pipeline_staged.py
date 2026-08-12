@@ -7,17 +7,21 @@ Same functions pipeline.py calls, arranged as retryable tasks:
 
   create_staging_tables
         |
-        +--> extract_brand -> load_brand -----+---> extract_product -> load_product --+
-        |                                     |                                       |
-        +--> extract_customer -> load_customer +--------------------------------------+
-        |                                     |                                       |
-        +--> extract_profile -> load_profile -+                                       |
-        |                                                                             |
-        +--> load_dim_date -----------------------------------------------------------+
-        |                                                                             |
-        +--> extract_fact_to_staging --> transform_fact --> quality_fact --> load_fact
-                                                                                  |
-                                                                            cleanup_staging
+        +--> extract_brand -> load_brand --> extract_product -> load_product --+
+        |                                                                      |
+        +--> extract_customer ------> load_customer --------------------------+
+        |                                                                      |
+        +--> extract_profile -------> load_profile ---------------------------+
+        |                                                                      |
+        +--> load_dim_date ---------------------------------------------------+
+        |                                                                      |
+        +--> extract_fact_to_staging ----------------------------------------+ |
+                                                                             | |
+                                       transform_fact <----------------------+-+
+                                              |
+                                        quality_fact
+                                              |
+                                         load_fact  ......[teardown] cleanup_staging
 
 Three dimension branches run in parallel. product waits on brand because of the
 FK; the fact transform waits on all of them because it needs their keys.
@@ -33,9 +37,9 @@ it later in the run would read a value the same run had already advanced.
 Load mode is chosen from the UI via the `load_mode` Param: full, historical or
 incremental (see etl/extract.py for what each one means).
 
-watch_for_failure is the DAG's only leaf task and exists so that
-cleanup_staging's trigger_rule='all_done' cannot leave a failed run reporting
-success. See the task's own docstring.
+cleanup_staging is a TEARDOWN task (dotted edge above), which is what keeps a
+failed run from reporting success without needing a watcher task wired to
+everything. See its docstring for the mechanism.
 """
 
 from datetime import datetime, timedelta
@@ -414,53 +418,40 @@ def sephora_dw_pipeline_staged():
 
     @task(trigger_rule="all_done")
     def cleanup_staging(**context):
-        """all_done, not all_success: a failed run must still clean up after
-        itself, or its rows sit in the staging tables forever."""
+        """Clears this run's staging rows. Wired as a TEARDOWN task (see below).
+
+        all_done, not all_success: a failed run must still clean up after
+        itself, or its rows sit in the staging tables forever.
+
+        Why teardown matters here
+        -------------------------
+        Airflow decides a DAG run's final state from its LEAF tasks, and this
+        task is the last thing in the DAG. Left as an ordinary task, the
+        all_done rule above is a trap: extract fails -> cleanup still runs ->
+        cleanup succeeds -> the only leaf is green -> THE DAG RUN REPORTS
+        SUCCESS even though the warehouse got no data. A green run that loaded
+        nothing is worse than a red one, because nobody goes looking.
+
+        Marking it .as_teardown() at the wiring site removes it from that
+        calculation. Airflow's _tis_for_dagrun_state() treats a task as an
+        "effective leaf" only if every downstream is an ignorable teardown, so
+        load_fact_from_staging becomes the leaf and cleanup stops being able to
+        speak for the run. An upstream failure now reaches load_fact as
+        upstream_failed, and the run goes red on its own.
+
+        Do NOT pass on_failure_fail_dagrun=True to make cleanup's own failure
+        count. That flag makes this task non-ignorable, which makes it the sole
+        effective leaf again and reinstates exactly the bug described above.
+        The trade is deliberate: a failed cleanup leaves batch-scoped rows
+        behind, which is a hygiene problem, while a masked pipeline failure is
+        a correctness one.
+        """
         batch_id = context["run_id"]
         dst_conn = PostgresHook(postgres_conn_id=DEST_CONN_ID).get_conn()
         try:
             cleanup_staging_rows(dst_conn, batch_id)
         finally:
             dst_conn.close()
-
-    @task(trigger_rule="one_failed", retries=0)
-    def watch_for_failure():
-        """Marks the DAG RUN failed if ANY upstream task failed.
-
-        Why this task has to exist
-        --------------------------
-        Airflow decides a DAG run's final state from its LEAF tasks. Before this
-        task, the only leaf was cleanup_staging, which runs with
-        trigger_rule='all_done' precisely so it cleans up after a failure. The
-        combination is a trap: extract fails -> cleanup still runs -> cleanup
-        succeeds -> the only leaf is green -> THE DAG RUN REPORTS SUCCESS even
-        though the warehouse got no data. A green run that loaded nothing is
-        worse than a red one, because nobody goes looking.
-
-        How the fix works
-        -----------------
-        Every task in the DAG is wired upstream of this one, and it carries
-        trigger_rule='one_failed', which fires as soon as at least one direct
-        upstream task has failed:
-
-          - Something failed  -> the rule is satisfied -> this task RUNS and
-                                 raises -> it is a leaf, and a failed leaf makes
-                                 the whole DAG run FAILED.
-          - Nothing failed    -> the rule is never satisfied -> this task is
-                                 SKIPPED. A skipped leaf does not fail a run, so
-                                 a clean run stays green.
-
-        retries=0 because retrying a task whose entire job is to report that
-        something already failed would just delay the red status by 10 minutes.
-
-        This is the watcher pattern from the Airflow docs, which exists for
-        exactly this all_done-cleanup situation.
-        """
-        raise AirflowFailException(
-            "Upstream task failure detected — failing the DAG run. "
-            "Check the Graph view for the red task; cleanup_staging will have "
-            "run regardless, so no staging rows are left behind."
-        )
 
     # --- wiring ---
 
@@ -484,20 +475,30 @@ def sephora_dw_pipeline_staged():
     [load_product, dim_load_tasks["customer"],
      dim_load_tasks["reviewer_profile"], date_task] >> transform_fact
 
-    cleanup = cleanup_staging()
-    transform_fact >> quality_fact >> load_fact_task >> cleanup
+    # cleanup runs last and is a teardown, so it cleans up after a failure
+    # WITHOUT being able to report success on the run's behalf. That single
+    # marker replaces the 15 explicit edges a one_failed watcher task needed,
+    # because it changes how run state is computed rather than adding a task to
+    # observe every other one.
+    cleanup = cleanup_staging().as_teardown()
+    transform_fact >> quality_fact >> load_fact_task
 
-    # The watcher must see EVERY task, because trigger_rule evaluates a task's
-    # DIRECT upstreams only. A task missing from this list is a task whose
-    # failure the watcher cannot notice, so the list is built from the task
-    # objects themselves rather than typed out by hand.
-    all_tasks = [create_staging_tables, extract_product, load_product,
-                 date_task, extract_fact, transform_fact, quality_fact,
-                 load_fact_task, cleanup]
-    for extract_task, load_task in dim_task_pairs.values():
-        all_tasks.extend([extract_task, load_task])
-
-    all_tasks >> watch_for_failure()
+    # Every branch that WRITES to a staging table has to finish before cleanup
+    # deletes this run's rows — not just the fact chain.
+    #
+    # Waiting on load_fact alone is a race that only shows up on failure: if the
+    # fact chain short-circuits to upstream_failed while the dimension branches
+    # are still staging, cleanup fires early, finds the tables empty, deletes
+    # nothing, and the dimensions then stage 513,606 rows that no one ever
+    # clears. Verified by the failure-injection run — the leftovers carried that
+    # run's own batch_id.
+    #
+    # The dim loads stand in for their extracts, which are upstream of them.
+    # These extra edges cost nothing structurally: each of these tasks still has
+    # transform_fact downstream, so cleanup stays ignorable and
+    # load_fact_from_staging remains the sole effective leaf.
+    [load_product, dim_load_tasks["customer"],
+     dim_load_tasks["reviewer_profile"], load_fact_task] >> cleanup
 
 
 sephora_dw_pipeline_staged()

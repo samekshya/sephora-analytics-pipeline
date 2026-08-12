@@ -14,7 +14,7 @@ version.
 > | Then | Now |
 > |---|---|
 > | Two load modes; `--full-reload` stopped at 2023 | Three named modes: `full` / `historical` / `incremental` — [05](05_etl_and_incremental_loading.md), D17 |
-> | 15 DAG tasks | **16** — a failure watcher was added — [06](06_airflow_runbook.md), D20 |
+> | 15 DAG tasks | **15** — a failure watcher was added (D20), then replaced by a teardown that does the same job with 12 fewer edges — [06](06_airflow_runbook.md), D24 |
 > | Unmatched rows dropped with a log warning | Counted against a named reason; unexplained gaps raise — D19 |
 > | Quality checks all fatal | `hard_failure` / `warning` severities — D21 |
 > | 8 hand-rolled fault-injection cases | **51 pytest tests** — [08](08_testing_evidence.md) |

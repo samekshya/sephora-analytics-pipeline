@@ -462,7 +462,11 @@ was dropped for this reason" indistinguishable from "this reason was never check
 
 ## D20. A failure watcher task, because `all_done` cleanup masked failures
 
-**Date**: 2026-08-08
+**Date**: 2026-08-08 · **Superseded by [D24](#d24-cleanup_staging-is-a-teardown-not-a-watched-task) on 2026-08-12**
+
+> The bug described here is real and the fix worked. It was later replaced by a smaller
+> mechanism that achieves the same guarantee. The entry is kept because the bug is the reason
+> the current design exists, and because the reasoning below is still the reasoning.
 
 **Decision**: `watch_for_failure`, `trigger_rule="one_failed"`, `retries=0`, wired downstream
 of all 15 other tasks and the DAG's only leaf.
@@ -585,6 +589,68 @@ One number in the panel is labelled **not live**: the 1,040 duplicates `clean.py
 before anything reached Postgres (D4). Neither database can be queried for it. It is stated
 and labelled rather than omitted, because the panel's claim is about what happened to every
 row — not only the parts that are convenient to query.
+
+---
+
+## D24. `cleanup_staging` is a teardown, not a watched task
+
+**Date**: 2026-08-12 · supersedes [D20](#d20-a-failure-watcher-task-because-all_done-cleanup-masked-failures)
+
+**Decision**: mark `cleanup_staging` with `.as_teardown()` and delete `watch_for_failure`
+entirely. The DAG goes from **16 tasks / 33 edges to 15 tasks / 21 edges**.
+
+**Why**: D20's watcher solved the right problem the expensive way. Because `trigger_rule`
+evaluates *direct* upstreams only, the watcher had to be wired downstream of every single
+task — 15 of the DAG's 33 edges existed solely to let one task observe the others. Nearly
+half the graph was failure plumbing, and every new task added a wiring obligation that,
+if forgotten, silently stopped failures being reported.
+
+Airflow's teardown feature addresses the same situation structurally. From
+`DagRun._tis_for_dagrun_state`:
+
+```python
+def is_effective_leaf(task):
+    for down_task_id in task.downstream_task_ids:
+        down_task = dag.get_task(down_task_id)
+        if not down_task.is_teardown or down_task.on_failure_fail_dagrun:
+            return False          # a non-ignorable downstream: not a leaf
+    return not task.is_teardown or task.on_failure_fail_dagrun
+```
+
+Marking cleanup a teardown makes it *ignorable*, which promotes
+`load_fact_from_staging` to sole effective leaf. Cleanup still runs after a failure, and it
+can no longer report success on the run's behalf. Failure propagation through
+`upstream_failed` then does the job the watcher's 15 edges were doing — verified by
+`test_every_task_can_fail_the_run`, which asserts every task has a path to the leaf.
+
+**The trap, recorded so it is not "fixed" later**: `on_failure_fail_dagrun=True` looks like
+the right way to make cleanup's *own* failure count. It is not. It makes cleanup
+non-ignorable, which makes it the sole effective leaf again and **reinstates D20's bug
+exactly**. The flag must stay `False`, and `test_cleanup_does_not_fail_the_dagrun` pins it
+there. The trade is deliberate and asymmetric: a failed cleanup strands batch-scoped rows,
+which is hygiene; a masked pipeline failure is correctness.
+
+**Verified by failure injection**, not by reading the docs. With `extract_fact_to_staging`
+forced to `failed`:
+
+| | |
+|---|---|
+| `transform` / `quality` / `load_fact` | `upstream_failed` |
+| `cleanup_staging` | **success** — still cleaned up |
+| DAG run | **failed** |
+
+A green cleanup beside a red run is precisely the case that used to report success.
+
+**A latent race this exposed.** The first injection run left **513,606 rows** in three
+staging tables carrying that run's own `batch_id`. Cause: `cleanup` had `load_fact` as its
+only upstream — in *both* the old and new designs. A normal run hides it, because `load_fact`
+always finishes after the dimensions. But when the fact chain short-circuits to
+`upstream_failed`, cleanup fires immediately, finds empty tables, deletes nothing, and the
+dimension branches stage their rows afterwards. Cleanup now waits on every staging **writer**
+(`load_product`, `load_customer`, `load_reviewer_profile`, `load_fact`). Those extra edges
+cost nothing structurally — each of those tasks still has `transform_fact` downstream, so
+cleanup stays ignorable and the leaf set is unchanged. Re-verified: all six staging tables at
+0 after an injected failure. Pinned by `test_cleanup_waits_for_every_staging_writer`.
 
 ---
 

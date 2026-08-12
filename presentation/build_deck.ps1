@@ -238,7 +238,7 @@ try {
     [void](Add-Text $slide 62 100 760 100 "Sephora Reviews`nAnalytics Pipeline" 39 $Color.White $true $ppAlignLeft $msoAnchorTop "Aptos Display")
     [void](Add-Text $slide 62 216 760 58 "Raw CSVs -> clean data -> 3NF OLTP -> star schema -> Airflow -> live Streamlit" 17 $Color.Muted $false)
     Add-Kpi $slide 62 340 155 "1.09M" "warehouse facts" $Color.Coral
-    Add-Kpi $slide 230 340 155 "16" "Airflow tasks" $Color.Cyan
+    Add-Kpi $slide 230 340 155 "15" "Airflow tasks" $Color.Cyan
     Add-Kpi $slide 398 340 155 "10" "analytics views" $Color.Yellow
     Add-Kpi $slide 566 340 155 "51" "passing tests" $Color.Green
     [void](Add-Text $slide 62 469 620 22 "Samekshya Baniya | PostgreSQL | Python | Airflow | Streamlit" 11 $Color.Muted)
@@ -335,26 +335,22 @@ try {
 
     # Slide 6 - Airflow evidence
     $slide = Add-SlideBase $Presentation "The DAG ran both paths successfully" "05 | Airflow orchestration" 6
-    [void](Add-Text $slide 44 109 872 26 "Controlled verification on 12 Aug 2026 | 16 tasks | 15 success + the intentionally skipped one_failed watcher" 12.5 $Color.Muted)
+    [void](Add-Text $slide 44 109 872 26 "Controlled verification on 12 Aug 2026 | 15 tasks | cleanup is a teardown, so a failed run cannot report success" 12.5 $Color.Muted)
     [void](Add-PictureContain $slide $HistoricalShot 44 151 419 284)
     [void](Add-PictureContain $slide $IncrementalShot 497 151 419 284)
-    [void](Add-Text $slide 44 442 419 22 "Historical re-offer | SUCCESS | 164 seconds" 12 $Color.Yellow $true $ppAlignCenter)
-    [void](Add-Text $slide 497 442 419 22 "Incremental restore | SUCCESS | 27 seconds" 12 $Color.Green $true $ppAlignCenter)
+    [void](Add-Text $slide 44 442 419 22 "Historical re-offer | SUCCESS | 134 seconds" 12 $Color.Yellow $true $ppAlignCenter)
+    [void](Add-Text $slide 497 442 419 22 "Incremental restore | SUCCESS | 22 seconds" 12 $Color.Green $true $ppAlignCenter)
     [void](Add-Text $slide 44 476 872 24 "Deleted only the verified 2023 fact slice -> restored all 49,503 rows -> watermark returned to 2023-03-21." 11.5 $Color.White $true $ppAlignCenter)
     Add-Notes $slide "1:10 - Point to task states and durations. Historical was idempotent; incremental restored the controlled 2023 slice; all staging tables ended empty."
 
     # Slide 7 - dashboard insights
     $slide = Add-SlideBase $Presentation "The dashboard leads with decisions, not decoration" "06 | Analytics and Streamlit" 7
-    [void](Add-PictureContain $slide $AnalysisShot 44 120 510 350)
-    [void](Add-Text $slide 584 118 328 23 "Price vs satisfaction: an inverted U" 15 $Color.White $true)
-    Add-MiniBar $slide 584 163 170 "Under `$15" 4.238 4.20 4.35 $Color.Cyan
-    Add-MiniBar $slide 584 195 170 "`$15-30" 4.276 4.20 4.35 $Color.Cyan
-    Add-MiniBar $slide 584 227 170 "`$30-50" 4.306 4.20 4.35 $Color.Cyan
-    Add-MiniBar $slide 584 259 170 "`$50-100" 4.334 4.20 4.35 $Color.Coral
-    Add-MiniBar $slide 584 291 170 "`$100+" 4.271 4.20 4.35 $Color.Cyan
-    [void](Add-Text $slide 584 334 332 48 "Ratings peak at `$50-100, then fall back above `$100. Variation narrows as price rises." 11.5 $Color.White $true)
-    [void](Add-Text $slide 584 397 332 62 "- Hype separates wishlist intention from satisfaction`n- March 2023 is labelled partial`n- Skin-profile effects are real but weak`n- Every slider binds into SQL" 10.5 $Color.Muted)
-    [void](Add-Text $slide 44 480 872 22 "Default page: summary first. Deep dive: hype, price, reviewer profile, and review-length polarisation." 11.5 $Color.White $true $ppAlignCenter)
+    [void](Add-Text $slide 44 109 872 26 "Live connection to sephora_dw - every figure re-queried on render, every control a SQL parameter" 12.5 $Color.Muted)
+    [void](Add-PictureContain $slide $OverviewShot 44 151 419 284)
+    [void](Add-PictureContain $slide $AnalysisShot 497 151 419 284)
+    [void](Add-Text $slide 44 442 419 22 "Overview | KPIs and fifteen-year trend" 12 $Color.Cyan $true $ppAlignCenter)
+    [void](Add-Text $slide 497 442 419 22 "Deep dive | hype, price and skin profile" 12 $Color.Coral $true $ppAlignCenter)
+    [void](Add-Text $slide 44 470 872 30 "Price vs satisfaction is an inverted U: 4.238 under `$15 -> 4.334 at `$50-100 -> 4.271 above `$100, and rating spread narrows as price rises." 11.5 $Color.White $true $ppAlignCenter)
     Add-Notes $slide "1:25 - Present the price curve as the headline. Then explain hype, partial-month labelling, weak skin signals, and SQL-backed controls."
 
     # Slide 8 - conclusion
