@@ -10,6 +10,18 @@ documents link to them by name.
 | `streamlit_overview.png` | Dashboard page 1: the KPI row plus the volume-over-time chart |
 | `streamlit_analysis.png` | Dashboard page 2: the price-band chart and the hype-vs-reality scatter |
 
+All four required captures were refreshed on **2026-08-12** from the live
+project environment:
+
+- `airflow_historical_run.png` — run `verification_historical_20260812`,
+  success, **164 seconds**, 15 successful tasks + skipped watcher.
+- `airflow_incremental_run.png` — run `verification_incremental_20260812`,
+  success, **27 seconds**, 15 successful tasks + skipped watcher.
+- `streamlit_overview.png` — live 1,093,371-row warehouse, KPI strip and both
+  monthly trend charts fully rendered.
+- `streamlit_analysis.png` — live Deep dive with hype scatter, ranked product
+  tables, and price analysis visible.
+
 ## Two worth capturing beyond the required four
 
 - **`airflow_watcher_failed.png`** — a run where a task failed, showing

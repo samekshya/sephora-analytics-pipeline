@@ -10,7 +10,9 @@ py -m pip install -r requirements.txt
 py -m streamlit run dashboard/app.py
 ```
 
-Opens on <http://localhost:8501>. Needs the warehouse container up
+Opens on <http://localhost:8501>. Use
+<http://localhost:8501/?page=deep-dive> for a direct link to Deep dive; the
+sidebar radio remains the normal in-app navigation. Needs the warehouse container up
 (`docker compose up -d`) and a `.env` at the repo root — see `.env.example`.
 
 If the warehouse is unreachable the app shows the connection string it tried

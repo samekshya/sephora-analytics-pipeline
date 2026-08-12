@@ -16,8 +16,8 @@ actually stands right now*.
 
 **Stages 1–11 of the pipeline are built, run, and verified.** The warehouse holds
 1,093,371 fact rows, Airflow runs both modes green, the dashboard works, 51 tests
-pass. What is left is **presentation material** (deck, screenshots) and **merging
-the current dashboard branch** — not pipeline work.
+pass, and the screenshots plus eight-minute deck are complete. What remains is
+final validation and merging the current dashboard branch — not pipeline work.
 
 ### Where the code is right now
 
@@ -25,7 +25,7 @@ the current dashboard branch** — not pipeline work.
 |---|---|
 | Current branch | `dashboard-polish` — dashboard controls, review-length analysis, live quality panel, and shared page styling are complete |
 | `main` | `90edfab` "Merge phase 9: audit remediation, dashboard and documentation" — matches `origin/main` |
-| Completion pass | **In progress** — documentation reconciled; live DAG proof, screenshots, deck, and final merge remain |
+| Completion pass | **In progress** — documentation, live DAG proof, screenshots, and deck complete; final validation and merge remain |
 
 The completed dashboard work is the source of **D23** and the 10th analytics
 view. It has already passed the host integration suite; this completion pass
@@ -93,18 +93,9 @@ defaults. Source CSVs are **not** in git — `data/README.md` says where to get 
 
 Ordered by what the capstone is graded on. Nothing here is blocked.
 
-1. **Merge `dashboard-polish` into `main`** and push. Ready now.
-2. **Capture screenshots** — `docs/screenshots/README.md` lists the exact four
-   required filenames plus two optional ones, and the commands to produce each.
-   The optional `airflow_watcher_failed.png` is the most persuasive of the set
-   because it demonstrates the D20 bug fix rather than describing it.
-3. **Build the 8-minute presentation deck.** Not started. All material exists —
-   `docs/README.md` maps each of the five required presentation topics to the
-   document that holds it. Suggested spine: D2 (junk dimension) as the design
-   decision, BQ3 (the inverted U) as the headline insight, and a **live**
-   incremental DAG run rather than a screenshot of one.
-4. **Final validation and merge** — re-run the full host suite, DAG assertions,
-   warehouse reconciliation, and dashboard smoke tests before merging to `main`.
+1. **Final validation and merge** — re-run the full host suite, DAG assertions,
+   warehouse reconciliation, and dashboard smoke tests, then merge
+   `dashboard-polish` into `main` and push both refs.
 
 ### Things that look like bugs and are not
 
@@ -263,9 +254,9 @@ Indexes on all four fact FK columns. **No `brand_key` on the fact table** (D11).
 | 9. Tests | **Done** — 51 pytest passing + 11 DAG assertions verified in-container |
 | 10. Documentation | **Done** — `docs/01`–`11` + index; 23 decisions logged |
 | 11. Reproducibility | **Done** — `setup.ps1`, 11 resumable steps; `.env.example` with working defaults |
-| — Dashboard polish | **Done, awaiting merge** — 6 commits on `dashboard-polish`: status strip, 3 query-param controls, `vw_rating_by_review_length`, data-quality panel, shared page shape. Source of D23 |
-| — Presentation deck | **Not started** — material ready, see `docs/README.md` |
-| — Screenshots | **Not captured** — filenames listed in `docs/screenshots/README.md` |
+| — Dashboard polish | **Done, awaiting merge** — status strip, 3 query-param controls, shareable Deep-dive URL, `vw_rating_by_review_length`, data-quality panel, shared page shape. Source of D23 |
+| — Presentation deck | **Done** — 8 timed slides; editable PowerPoint, PDF, embedded notes, and reproducible builder under `presentation/` |
+| — Screenshots | **Done** — 4 required live captures under `docs/screenshots/`, all visually inspected |
 
 Stages 1–11 are complete and verified against real runs; the numbers in section 7
 come from those runs, not from estimates. The only outstanding work is the last
@@ -333,9 +324,10 @@ Fill in from actual runs. Never estimate here — if it isn't measured, leave it
 | **Incremental load** (`pipeline.py`) | watermark 2022-12-31 → 49,503 extracted, **49,503 inserted** |
 | **Idempotency, empty case** (re-run incremental) | watermark 2023-03-21 → **0 extracted**, gate skipped, 0 inserted |
 | **Final warehouse** | **fact_reviews 1,093,371** — matches `staging.review` exactly. Date range 2008-08-28 → 2023-03-21, avg rating 4.2990 |
-| **Quality fault injection** (`tests/test_quality.py`) | 8 passed, 0 failed |
+| **Quality fault injection** (`tests/unit/test_quality.py`) | 15 collected cases, all passing |
 | **Airflow, historical** | All tasks green; 1,043,868 fact rows. `load_fact_from_staging` SIGKILLed on the first attempt and succeeded after chunking (D15) |
 | **Airflow, incremental** | All tasks green in **22 seconds**; 49,503 rows → 1,093,371 total |
+| **Airflow completion verification (2026-08-12)** | `verification_historical_20260812`: success, 15 success + skipped watcher, **164s**. Controlled reset removed exactly 49,503 2023 rows; `verification_incremental_20260812` restored all rows in **27s**. Final fact count 1,093,371; watermark 2023-03-21; all 6 DAG staging tables empty |
 | **Staging cleanup** | All 6 staging tables at 0 rows after both runs (`trigger_rule="all_done"`) |
 | **Analytics views** | **10** views created; all 8 full-population views reconcile to 1,093,371 exactly (`vw_rating_by_skin_type` and `vw_hype_vs_reality` are deliberate subsets) |
 | **DAG structure** | 16 tasks; 11/11 assertions pass in-container (watcher is the only leaf, watches all 15 others) |

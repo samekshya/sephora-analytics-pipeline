@@ -1057,7 +1057,12 @@ def main():
 
   categories, date_range, min_reviews = sidebar_filters()
 
-  page = st.sidebar.radio("Page", ["Overview", "Deep dive"])
+  # Query-param default makes either page directly shareable (and keeps
+  # evidence captures reproducible) while the sidebar remains the normal
+  # navigation once the app is open.
+  requested_page = st.query_params.get("page", "").lower()
+  default_page = 1 if requested_page in {"deep", "deep-dive", "analysis"} else 0
+  page = st.sidebar.radio("Page", ["Overview", "Deep dive"], index=default_page)
   if page == "Overview":
     page_overview(categories, date_range, min_reviews)
   else:

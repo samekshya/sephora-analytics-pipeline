@@ -24,6 +24,7 @@ Read in order for the full story, or jump to what you need.
 | [`../dashboard/README.md`](../dashboard/README.md) | What each visual shows and how to read it |
 | [`../dashboard/data_model.md`](../dashboard/data_model.md) | Which tables and views the dashboard reads |
 | [`../data/README.md`](../data/README.md) | Where to get the source CSVs and where to put them |
+| [`../presentation/README.md`](../presentation/README.md) | Eight-minute deck, PDF, timing guide, and rebuild command |
 | [`screenshots/`](screenshots/) | Presentation captures — filenames the other docs link to |
 | [`archive/`](archive/) | Superseded documents, kept rather than deleted |
 

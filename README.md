@@ -242,12 +242,18 @@ Orchestrated two ways: `pipeline.py` for local runs, and
 flowchart LR
     START[create staging tables]
 
-    START --> EB[extract brand] --> LB[load brand] --> EP[extract product] --> LP[load product]
-    START --> EC[extract customer] --> LC[load customer]
-    START --> ER[extract reviewer profile] --> LR[load reviewer profile]
-    START --> DD[load date dimension]
-    START --> EF[extract fact] --> TF[transform fact]
+    subgraph DIMS[dimension branches]
+        EB[extract brand] --> LB[load brand] --> EP[extract product] --> LP[load product]
+        EC[extract customer] --> LC[load customer]
+        ER[extract reviewer profile] --> LR[load reviewer profile]
+        DD[load date dimension]
+    end
 
+    START --> EB
+    START --> EC
+    START --> ER
+    START --> DD
+    START --> EF[extract fact] --> TF[transform fact]
     LP --> TF
     LC --> TF
     LR --> TF
@@ -255,22 +261,7 @@ flowchart LR
 
     TF --> QF[quality gate] --> LF[load fact]
     LF --> CLEAN[cleanup staging]
-
-    START --> WATCH[watch for failure]
-    EB --> WATCH
-    LB --> WATCH
-    EP --> WATCH
-    LP --> WATCH
-    EC --> WATCH
-    LC --> WATCH
-    ER --> WATCH
-    LR --> WATCH
-    DD --> WATCH
-    EF --> WATCH
-    TF --> WATCH
-    QF --> WATCH
-    LF --> WATCH
-    CLEAN --> WATCH
+    CLEAN -. "all 15 task states are direct upstream" .-> WATCH[watch for failure]
 ```
 
 Three dimension branches run in parallel; `product` waits on `brand` for the foreign key. The
@@ -281,6 +272,11 @@ Each dimension pair writes through a staging table scoped by `batch_id = run_id`
 row-level data crosses task boundaries via XCom — XCom is metadata storage, not a data channel.
 
 `cleanup_staging` uses `trigger_rule="all_done"`, so a failed run still clears its own rows.
+The watcher uses `one_failed`, receives **all 15 other tasks as direct
+upstreams**, and is the DAG's only leaf. The diagram collapses those 15 watcher
+edges into the dashed annotation so the execution path remains readable.
+
+![Verified incremental Airflow run](docs/screenshots/airflow_incremental_run.png)
 
 ## Run it
 
@@ -354,6 +350,19 @@ brand chart says how many of the 304 brands clear the current review floor.
 
 See [`dashboard/README.md`](dashboard/README.md) for what each visual shows and
 [`docs/07_dashboard_insights.md`](docs/07_dashboard_insights.md) for the findings.
+
+![Streamlit overview](docs/screenshots/streamlit_overview.png)
+
+The Deep dive can also be opened directly at
+<http://localhost:8501/?page=deep-dive> for a stable presentation link.
+
+## Presentation
+
+The completed eight-minute deck is available as an editable
+[`PowerPoint`](presentation/output/Sephora_Analytics_Pipeline.pptx) and a
+portable [`PDF`](presentation/output/Sephora_Analytics_Pipeline.pdf). See
+[`presentation/README.md`](presentation/README.md) for the timed slide sequence,
+speaker notes, and reproducible build command.
 
 ### The headline finding
 
