@@ -68,21 +68,37 @@ neutral midpoint.
 
 ## Interactive controls
 
-**One**, plus Refresh. It is a real query parameter — the value is bound into the
-SQL and Postgres is asked again. It does not filter a dataframe after the fact,
-which would look identical on screen and be a different claim entirely.
+**Four**, plus Refresh. Every one binds into the SQL and Postgres is asked
+again — none filters a dataframe after the fact, which would look identical on
+screen and be a different claim entirely.
 
-| Control | Bound into | Why it's there |
+| Control | Bound into | Scopes |
 |---|---|---|
-| **Minimum reviews per brand** | `WHERE review_count >= %s` on `vw_rating_by_brand` | Without a floor the "best brand" is whichever has a single 5-star review. This is the one control that changes what the data *says*, so it is the one that survived D25 |
-| **Refresh data** | Clears the query cache and freezes the row-count baseline | Run the Airflow DAG, click this, watch the review count move — this is what makes "live" demonstrable |
-| **How to read this** | Expander: the conventions that are easy to misread | Truncated axes, `Unknown` as a category, the two-colour rule, where to reproduce a number |
+| **Category** (sidebar) | `secondary_category = ANY(%s)` | Brands, categories, hype, skin type, product explorer |
+| **Minimum reviews per brand** (sidebar) | `WHERE review_count >= %s` | The brand chart. Without a floor the "best brand" is whichever has a single 5-star review |
+| **Brand** (Explore section) | `brand_name = ANY(%s)` | The product table |
+| **Product name contains** (Explore section) | `product_name ILIKE %s` | The product table |
+| **Refresh data** | Clears the query cache, freezes the row-count baseline | Everything — this is what makes "live" demonstrable |
 
-The category multiselect, date-range slider, hype-gap slider, price-range slider
-and skin-group floor were **removed** in D25. Each was a genuine SQL parameter,
-but five controls on a page nobody operates is complexity for its own sake, and
-each was a way for a live demo to end up in a state that does not show the
-finding.
+### What Category does and does not scope
+
+`vw_review_volume_by_month` and `vw_rating_by_price_band` aggregate the category
+column away, so a category predicate on them is a **no-op**. Rather than let the
+page look filtered when it is not, those two cards are titled *— all
+categories*, the sidebar carries a note listing exactly what responds, and
+selecting a subset raises a banner naming the categories in force.
+
+The brand chart responds because **`vw_rating_by_brand_category`** was added for
+it: `vw_rating_by_brand` groups by brand alone, so filtering it would silently do
+nothing. Brand figures are re-aggregated from that view with a review-count
+**weighted** mean, not an average of averages.
+
+The product-level filters deliberately live in the Explore section rather than
+the sidebar, directly above the only table they scope, so their reach is never
+in question.
+
+Still removed from the earlier design: the date-range, hype-gap, price-range and
+skin-group sliders (D25).
 
 ## The live status strip
 

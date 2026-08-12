@@ -227,7 +227,7 @@ invalidate the cursor mid-loop.
 ## Verification
 
 ```powershell
-py -m pytest -q                                    # 49 passed
+py -m pytest -q                                    # 51 passed
 py -m pytest tests/unit -q                         # no database needed
 docker exec -i leapfrog_sephora_postgres psql -U postgres -d sephora_dw -q -f - < sql/validation/dashboard_checks.sql
 ```

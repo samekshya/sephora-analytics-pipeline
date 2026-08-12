@@ -240,7 +240,7 @@ try {
     Add-Kpi $slide 62 340 155 "1.09M" "warehouse facts" $Color.Coral
     Add-Kpi $slide 230 340 155 "15" "Airflow tasks" $Color.Cyan
     Add-Kpi $slide 398 340 155 "10" "analytics views" $Color.Yellow
-    Add-Kpi $slide 566 340 155 "49" "passing tests" $Color.Green
+    Add-Kpi $slide 566 340 155 "51" "passing tests" $Color.Green
     [void](Add-Text $slide 62 469 620 22 "Samekshya Baniya | PostgreSQL | Python | Airflow | Streamlit" 11 $Color.Muted)
     [void](Add-Text $slide 885 508 30 14 "1" 8.5 $Color.Muted $true $ppAlignCenter)
     Add-Notes $slide "0:40 - Introduce the complete pipeline and emphasize that every number in the deck is measured from live runs."
@@ -285,7 +285,7 @@ try {
 
     Add-LabelBox $slide 92 326 222 116 "sephora_oltp" "PostgreSQL database`nraw -> 3NF -> staging`n0 row gap" $Color.Cyan
     Add-LabelBox $slide 369 326 222 116 "Two orchestrators" "pipeline.py for local runs`n16-task Airflow DAG`nfull | historical | incremental" $Color.Yellow
-    Add-LabelBox $slide 646 326 222 116 "sephora_dw" "Star schema + 10 views`nStreamlit reads views only`nvalidation shares definitions" $Color.Green
+    Add-LabelBox $slide 646 326 222 116 "sephora_dw" "Star schema + 11 views`nStreamlit reads views only`nvalidation shares definitions" $Color.Green
     [void](Add-Text $slide 44 470 872 23 "Grain of fact_reviews: one row per review. PostgreSQL generates every surrogate key." 12.5 $Color.White $true $ppAlignCenter)
     Add-Notes $slide "1:05 - Walk left to right. Stress raw traceability, 3NF correctness, staging convenience, and the separate warehouse."
 

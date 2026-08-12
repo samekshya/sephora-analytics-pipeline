@@ -663,8 +663,16 @@ cleanup stays ignorable and the leaf set is unchanged. Re-verified: all six stag
 
 **Date**: 2026-08-12 · narrows [D23](#d23-dashboard-controls-are-query-parameters-and-the-quality-panel-recomputes)
 
-**Decision**: the dashboard is a **single scrolling page** with **one** control (the
-brand review floor) plus Refresh, themed Sephora black / white / red.
+**Decision**: the dashboard is a **single scrolling page** with a small, deliberate set
+of controls, themed Sephora black / white / red.
+
+> **Revised the same day.** This entry originally landed with exactly **one** control
+> (the brand review floor), cutting five. Category- and product-level filtering was then
+> asked for and added back, giving **four**: category, brand review floor, brand, and a
+> product name search. The principle that survived is not "one control" — it is that
+> every control must **bind into SQL** and must have an **unambiguous scope**. The five
+> that were cut (date range, hype gap, price range, skin-group floor, and the old
+> whole-page category multiselect) are still gone. See *Scope* below.
 
 **Why one page**: two pages meant the five business questions were split across a
 navigation control, so answering "what did you find?" required knowing which page a
@@ -681,9 +689,52 @@ sake, and each one is a way for the demo to end up in a state that does not show
 finding. The review floor stays because without it the "best brand" is whichever has
 a single 5-star review; it still binds in as `WHERE review_count >= %s`.
 
-**What this costs, stated plainly**: D23's claim was demonstrated by *five* controls
-and is now demonstrated by one. Three of the tests that asserted individual sliders
-were live are gone with the sliders. The data-quality panel half of D23 is untouched.
+**What this costs, stated plainly**: three of the tests that asserted individual
+sliders were live are gone with the sliders. The data-quality panel half of D23 is
+untouched, and the surviving controls are each covered by a test that moves one and
+requires the corresponding caption to change.
+
+### Scope — the part that makes a partial filter honest
+
+A category filter cannot scope every chart, and pretending otherwise is the real
+hazard. Of the views the page reads:
+
+| Section | Responds to Category? | Why |
+|---|---|---|
+| Brands | **yes** | via the new `vw_rating_by_brand_category` |
+| Categories · Hype · Skin type · Product explorer | **yes** | their views carry `secondary_category` |
+| Volume/rating trend · Price bands | **no** | `vw_review_volume_by_month` and `vw_rating_by_price_band` aggregate the category column away |
+
+The two that cannot respond are **labelled *all categories* in their card titles**, a
+sidebar note lists exactly what the filter scopes, and selecting a subset raises a
+banner naming the categories in force. A filter that silently does nothing to two
+sections while appearing to work is worse than no filter.
+
+**`vw_rating_by_brand_category` exists specifically for this.** `vw_rating_by_brand`
+groups by brand alone, so a category predicate applied to it is a no-op — the brand
+chart would have stayed catalogue-wide while the page claimed to be filtered. The new
+view is a full-population view and reconciles to `fact_reviews` at 1,093,371 like the
+rest. The dashboard re-aggregates it to brand level with a **review-count-weighted
+mean**: averaging the per-category averages would weight a 12-review category the same
+as a 300,000-review one.
+
+**The product-level filters live in their own section**, not the sidebar. Their brand
+picker and name search sit directly above the only table they scope, so there is never
+a question about what they affect — the ambiguity the category filter has to explain
+with a note.
+
+### Other filters that were considered
+
+Recorded so the absence is a decision rather than an oversight:
+
+| Filter | Cost | Verdict |
+|---|---|---|
+| Price range | Free — `price_usd` is on `vw_hype_vs_reality` | Available; the price-band section already answers BQ3 more directly |
+| Rating / recommend threshold | Free on the product view | Selecting on the outcome invites survivorship reasoning |
+| Product flags (`sephora_exclusive`, `limited_edition`, …) | Needs a view; they sit on `dim_product` | Genuinely interesting, no business question attached |
+| Date range | Needs a category × month view | Cut — the trend chart is the whole point of BQ5 and shortening it removes the finding |
+| Skin tone / type as a *filter* | Needs a fact-level predicate on the junk dimension | It is a **dimension of the answer** in BQ4, not a filter on it |
+| Tertiary category | Free — already on `dim_product` | 174 triples is too many for a usable control |
 
 ### The palette was validated, not chosen
 

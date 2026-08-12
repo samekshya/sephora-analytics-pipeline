@@ -132,6 +132,48 @@ def test_min_reviews_filter_is_live():
     "the query")
 
 
+def _caption_containing(at, needle):
+  """Find a caption by content, not index.
+
+  Captions are returned in render order, so indexing would silently repoint at
+  a different one the moment a section is added above it — and the test would
+  keep passing.
+  """
+  return next(c.value for c in at.caption if needle in c.value)
+
+
+def test_category_filter_scopes_the_brand_chart():
+  """The category filter must reach the brand query, not just the category one.
+
+  `vw_rating_by_brand` has no category column, so a naive implementation
+  filters the category chart and silently leaves the brand chart catalogue-wide
+  — which looks like it works. The brand chart is served by
+  `vw_rating_by_brand_category` precisely so this holds.
+  """
+  at = _run()
+  before = _caption_containing(at, "brands clear the")
+
+  at.sidebar.multiselect[0].set_value(["Cleansers"]).run()
+  assert not at.exception
+
+  after = _caption_containing(at, "brands clear the")
+  assert after != before, (
+    "narrowing to one category left the brand chart unchanged — the filter is "
+    "not reaching vw_rating_by_brand_category")
+
+
+def test_product_search_is_live():
+  """The product search must be an ILIKE in SQL, not a frame filter."""
+  at = _run()
+  before = _caption_containing(at, "products match")
+
+  at.text_input[0].set_value("cleanser").run()
+  assert not at.exception
+
+  after = _caption_containing(at, "products match")
+  assert after != before, "the product search is not reaching the query"
+
+
 def test_review_length_finding_is_stated():
   at = _run()
 

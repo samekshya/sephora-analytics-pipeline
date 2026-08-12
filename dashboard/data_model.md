@@ -13,12 +13,14 @@ meets each view scrolling down.
 |---|---|---|
 | `vw_kpi_summary` | The 5-metric KPI row and the live watermark | 1 row |
 | `vw_review_volume_by_month` | BQ5 volume bars, monthly + rolling rating lines | 1 row per month (176) |
-| `vw_rating_by_brand` | BQ1 brands-against-the-average diverging bars | 1 row per brand (304) |
+| `vw_rating_by_brand` | BQ1 brands-against-the-average diverging bars, unfiltered | 1 row per brand (304) |
+| `vw_rating_by_brand_category` | The same chart when a Category filter is on | 1 row per (brand, secondary category) |
 | `vw_rating_by_category` | BQ1b category dot plot | 1 row per category triple (174) |
 | `vw_rating_by_price_band` | BQ3 rating line and spread line | 1 row per band (5) |
 | `vw_hype_vs_reality` | BQ2 hype scatter and both ranked tables | 1 row per product with ≥50 reviews (1,660) |
 | `vw_rating_by_skin_type` | BQ4 skin-type dot plot | skin_type × category |
 | `vw_rating_by_review_length` | BQ4 review-length small multiples | 1 row per length bucket (6) |
+| `vw_hype_vs_reality` | Also backs the **Explore** product table (brand picker + name search) | 1 row per product with ≥50 reviews (1,660) |
 
 `vw_rating_by_skin_tone` is no longer read by a chart. It is still validated by
 `sql/validation/dashboard_checks.sql` and still reconciles to `fact_reviews`;

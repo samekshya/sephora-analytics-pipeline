@@ -17,7 +17,7 @@ version.
 > | 15 DAG tasks | **15** — a failure watcher was added (D20), then replaced by a teardown that does the same job with 12 fewer edges — [06](06_airflow_runbook.md), D24 |
 > | Unmatched rows dropped with a log warning | Counted against a named reason; unexplained gaps raise — D19 |
 > | Quality checks all fatal | `hard_failure` / `warning` severities — D21 |
-> | 8 hand-rolled fault-injection cases | **49 pytest tests** — [08](08_testing_evidence.md) |
+> | 8 hand-rolled fault-injection cases | **51 pytest tests** — [08](08_testing_evidence.md) |
 > | Power BI planned, not built | **Streamlit, built** — [`dashboard/`](../dashboard/README.md), D18 |
 > | 6 analytics views | **10**, split from validation SQL — D22 |
 > | `dim_reviewer_profile` described as 2,003 rows | **1,896** — 2,003 is the pre-cleaning figure |
@@ -616,7 +616,7 @@ Git history mirrors this discipline: one branch per project phase, merged to
 ## 11. Where things stand right now
 
 Exploration, cleaning, the 3NF OLTP database, the star-schema warehouse, the
-ETL package, all three load modes, the 16-task Airflow DAG, 10 analytics views,
+ETL package, all three load modes, the 15-task Airflow DAG, 11 analytics views,
 and the two-page Streamlit dashboard are **built, run, and verified** with
 measured numbers. The host suite has 51 passing tests, and the container-side
 DAG verifier has 11 passing assertions.

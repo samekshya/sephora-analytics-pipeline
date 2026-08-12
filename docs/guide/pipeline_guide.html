@@ -1,0 +1,661 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sephora Reviews — End-to-End Pipeline Guide</title>
+<style>
+  @page { size: A4; margin: 15mm 14mm 16mm 14mm; }
+
+  :root{
+    --ink:#111114; --ink2:#3d3d44; --muted:#6c6c76; --line:#dcdce2;
+    --red:#D0203F; --redsoft:#FDECEF; --blue:#2F5C93; --bluesoft:#EDF2F9;
+    --surface:#F7F7F9; --code:#F2F2F5;
+  }
+  *{ box-sizing:border-box; }
+  body{
+    font-family:"Segoe UI", system-ui, -apple-system, sans-serif;
+    color:var(--ink); font-size:9.6pt; line-height:1.5; margin:0;
+    -webkit-print-color-adjust:exact; print-color-adjust:exact;
+  }
+  h1,h2,h3,h4{ margin:0; line-height:1.22; }
+  p{ margin:0 0 7px 0; }
+  code{ font-family:"Cascadia Mono",Consolas,monospace; font-size:8.6pt;
+        background:var(--code); padding:1px 4px; border-radius:3px; }
+  b,strong{ color:var(--ink); }
+  .muted{ color:var(--muted); }
+
+  /* ---------- cover ---------- */
+  .cover{ height:262mm; display:flex; flex-direction:column; justify-content:center;
+          page-break-after:always; }
+  .cover .kicker{ color:var(--red); font-size:10pt; font-weight:700;
+                  letter-spacing:.18em; text-transform:uppercase; }
+  .cover h1{ font-size:34pt; font-weight:700; margin:12px 0 6px 0; letter-spacing:-.02em; }
+  .cover .sub{ font-size:13pt; color:var(--ink2); max-width:150mm; line-height:1.45; }
+  .bar{ width:64px; height:5px; background:var(--red); border-radius:3px; margin:18px 0 22px 0; }
+  .coverstats{ display:flex; gap:9px; margin-top:26px; flex-wrap:wrap; }
+  .cs{ border:1px solid var(--line); border-radius:8px; padding:10px 13px; min-width:31mm;
+       background:var(--surface); }
+  .cs .v{ font-size:16pt; font-weight:700; color:var(--red); }
+  .cs .l{ font-size:7.6pt; color:var(--muted); text-transform:uppercase; letter-spacing:.07em; }
+  .coverfoot{ margin-top:auto; padding-top:16px; border-top:1px solid var(--line);
+              color:var(--muted); font-size:8.4pt; }
+
+  /* ---------- sections ---------- */
+  section{ page-break-before:always; }
+  .stage{ display:flex; align-items:baseline; gap:10px; margin-bottom:2px; }
+  .num{ font-size:9pt; font-weight:700; color:#fff; background:var(--red);
+        border-radius:4px; padding:2px 8px; letter-spacing:.04em; }
+  h2{ font-size:18pt; letter-spacing:-.015em; }
+  .lede{ color:var(--ink2); font-size:10.2pt; margin:7px 0 13px 0; max-width:170mm; }
+  h3{ font-size:11pt; margin:15px 0 6px 0; }
+  h3::before{ content:""; display:inline-block; width:12px; height:3px;
+              background:var(--red); border-radius:2px; vertical-align:middle;
+              margin-right:7px; }
+
+  table{ border-collapse:collapse; width:100%; margin:7px 0 10px 0; font-size:8.6pt; }
+  th{ text-align:left; background:var(--surface); color:var(--ink);
+      font-weight:600; padding:5px 8px; border-bottom:1.5px solid var(--line);
+      border-top:1px solid var(--line); }
+  td{ padding:4.5px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+  td.n, th.n{ text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  tr:nth-child(even) td{ background:#FBFBFC; }
+  table.tight td, table.tight th{ padding:3.5px 7px; font-size:8.2pt; }
+
+  .note{ border-left:3px solid var(--red); background:var(--redsoft);
+         padding:8px 12px; margin:9px 0; border-radius:0 5px 5px 0; }
+  .note.b{ border-left-color:var(--blue); background:var(--bluesoft); }
+  .note .t{ font-weight:700; font-size:8.8pt; margin-bottom:2px; }
+  .note p{ margin:0; font-size:8.8pt; }
+
+  .cols{ display:flex; gap:12px; }
+  .cols > *{ flex:1; min-width:0; }
+
+  pre{ background:var(--code); border:1px solid var(--line); border-radius:6px;
+       padding:9px 11px; font-family:"Cascadia Mono",Consolas,monospace;
+       font-size:7.9pt; line-height:1.42; overflow:hidden; margin:8px 0;
+       white-space:pre; }
+
+  .flow{ display:flex; align-items:stretch; gap:0; margin:10px 0 12px 0; }
+  .fbox{ flex:1; border:1px solid var(--line); border-radius:7px; padding:8px 9px;
+         background:#fff; }
+  .fbox .h{ font-weight:700; font-size:8.6pt; color:var(--red); }
+  .fbox .d{ font-size:7.8pt; color:var(--muted); line-height:1.35; }
+  .arrow{ display:flex; align-items:center; padding:0 5px; color:var(--red);
+          font-weight:700; font-size:13pt; }
+
+  .pill{ display:inline-block; font-size:7.4pt; padding:1px 6px; border-radius:9px;
+         border:1px solid var(--line); background:#fff; color:var(--ink2);
+         margin-right:3px; white-space:nowrap; }
+  .pill.k{ border-color:var(--red); color:var(--red); font-weight:600; }
+  .pill.f{ border-color:var(--blue); color:var(--blue); font-weight:600; }
+
+  .avoid{ page-break-inside:avoid; }
+  .foot{ margin-top:14px; padding-top:7px; border-top:1px solid var(--line);
+         color:var(--muted); font-size:7.6pt; }
+</style>
+</head>
+<body>
+
+<!-- ============================== COVER ============================== -->
+<div class="cover">
+  <div class="kicker">Data Engineering Capstone</div>
+  <h1>Sephora Reviews<br>Analytics Pipeline</h1>
+  <div class="bar"></div>
+  <div class="sub">
+    How 1.09&nbsp;million product reviews travel from six raw CSV files to a live
+    dashboard — every stage, what it changes, and why it is built that way.
+  </div>
+
+  <div class="coverstats">
+    <div class="cs"><div class="v">1,093,371</div><div class="l">Reviews in the warehouse</div></div>
+    <div class="cs"><div class="v">8,494</div><div class="l">Products</div></div>
+    <div class="cs"><div class="v">503,216</div><div class="l">Reviewers</div></div>
+    <div class="cs"><div class="v">15</div><div class="l">Airflow tasks</div></div>
+    <div class="cs"><div class="v">11</div><div class="l">Analytics views</div></div>
+    <div class="cs"><div class="v">51</div><div class="l">Passing tests</div></div>
+  </div>
+
+  <div style="margin-top:30px">
+    <table class="tight" style="max-width:150mm">
+      <tr><th style="width:14mm">#</th><th>Stage</th><th>What it produces</th></tr>
+      <tr><td>1</td><td>Source data</td><td>6 CSVs — the columns and what they mean</td></tr>
+      <tr><td>2</td><td>Explore</td><td>14 profiling checks, measured before any rule was written</td></tr>
+      <tr><td>3</td><td>Clean</td><td><code>data/processed/</code> — 1,040 duplicates removed</td></tr>
+      <tr><td>4</td><td>OLTP</td><td><code>raw</code> → <code>3nf</code> (9 tables) → <code>staging</code></td></tr>
+      <tr><td>5</td><td>ETL</td><td>extract → transform → reconcile → quality → load</td></tr>
+      <tr><td>6</td><td>Warehouse</td><td>Star schema: 5 dimensions + <code>fact_reviews</code></td></tr>
+      <tr><td>7</td><td>Quality gate</td><td>7 check types, two severities</td></tr>
+      <tr><td>8</td><td>Airflow</td><td>15 tasks, 3 load modes, watermark incremental</td></tr>
+      <tr><td>9</td><td>Dashboard</td><td>One page, 5 business questions, live connection</td></tr>
+    </table>
+  </div>
+
+  <div class="coverfoot">
+    Samekshya Baniya &nbsp;·&nbsp; PostgreSQL 16 · Python 3.13 · Apache Airflow 3.3 · Streamlit
+    &nbsp;·&nbsp; Every figure in this document was measured from the running system, not estimated.
+  </div>
+</div>
+
+<!-- ============================== 1. SOURCE ============================== -->
+<section>
+  <div class="stage"><span class="num">STAGE 1</span><h2>The source data</h2></div>
+  <p class="lede">
+    Two kinds of file at two different grains, from the Kaggle dataset
+    <i>Sephora Products and Skincare Reviews</i>. Nothing here has been touched by hand.
+  </p>
+
+  <div class="flow">
+    <div class="fbox">
+      <div class="h">product_info.csv</div>
+      <div class="d">8,494 rows × 27 columns<br>One row per product</div>
+    </div>
+    <div class="arrow">+</div>
+    <div class="fbox">
+      <div class="h">reviews_*.csv &nbsp;(× 5)</div>
+      <div class="d">1,094,411 rows total<br>One row per review</div>
+    </div>
+    <div class="arrow">=</div>
+    <div class="fbox">
+      <div class="h">≈ 550 MB</div>
+      <div class="d">Gitignored. <code>data/README.md</code> says where to get them</div>
+    </div>
+  </div>
+
+  <h3>product_info.csv — all 27 columns</h3>
+  <table class="tight">
+    <tr><th style="width:34mm">Column</th><th style="width:20mm">Type</th><th>Meaning and fate in the pipeline</th></tr>
+    <tr><td><code>product_id</code></td><td>text</td><td><span class="pill k">PK</span> Unique — 0 duplicates. Survives to <code>dim_product</code></td></tr>
+    <tr><td><code>product_name</code></td><td>text</td><td>Carried through to <code>dim_product</code></td></tr>
+    <tr><td><code>brand_id</code></td><td>integer</td><td><span class="pill f">FK</span> Strictly 1:1 with <code>brand_name</code> — becomes the <code>brand</code> table</td></tr>
+    <tr><td><code>brand_name</code></td><td>text</td><td>Moved out to <code>3nf.brand</code>; removed from product (redundancy)</td></tr>
+    <tr><td><code>loves_count</code></td><td>integer</td><td>Wishlist adds. Drives BQ2 — recorded <i>before</i> purchase</td></tr>
+    <tr><td><code>rating</code></td><td>numeric</td><td>Site-displayed average. <b>Not used</b> — the warehouse recomputes from reviews</td></tr>
+    <tr><td><code>reviews</code></td><td>integer</td><td>Site-displayed count. Not used, for the same reason</td></tr>
+    <tr><td><code>size</code></td><td>text</td><td>Free text ("1.7 oz / 50 mL"). Kept on <code>dim_product</code></td></tr>
+    <tr><td><code>variation_type</code> / <code>_value</code> / <code>_desc</code></td><td>text</td><td>Shade or size variants. Dropped at raw → 3NF (out of scope)</td></tr>
+    <tr><td><code>ingredients</code></td><td>text</td><td>Long free text. Dropped at raw → 3NF</td></tr>
+    <tr><td><code>price_usd</code></td><td>numeric</td><td>Drives BQ3. Banded into <code>price_band</code> once, in the ETL</td></tr>
+    <tr><td><code>value_price_usd</code>, <code>sale_price_usd</code></td><td>numeric</td><td>Sparse. Dropped at raw → 3NF</td></tr>
+    <tr><td><code>limited_edition</code>, <code>new</code>, <code>online_only</code>, <code>out_of_stock</code>, <code>sephora_exclusive</code></td><td>boolean</td><td>Five flags. All kept on <code>dim_product</code></td></tr>
+    <tr><td><code>highlights</code></td><td>text</td><td>Stringified list, 112 tags. <b>Measured, then deliberately descoped</b> — a genuine many-to-many (D3)</td></tr>
+    <tr><td><code>primary_category</code></td><td>text</td><td>Always <code>Skincare</code> for reviewed products (D16)</td></tr>
+    <tr><td><code>secondary_category</code></td><td>text</td><td>The level that actually varies — all category analysis runs here</td></tr>
+    <tr><td><code>tertiary_category</code></td><td>text</td><td>Third level. Kept, flattened onto <code>dim_product</code></td></tr>
+    <tr><td><code>child_count</code>, <code>child_max_price</code>, <code>child_min_price</code></td><td>int/num</td><td>Variant rollups. Dropped at raw → 3NF</td></tr>
+  </table>
+
+  <h3>reviews_*.csv — all columns</h3>
+  <table class="tight">
+    <tr><th style="width:34mm">Column</th><th style="width:20mm">Type</th><th>Meaning and fate in the pipeline</th></tr>
+    <tr><td><code>source_row_id</code></td><td>bigint</td><td><span class="pill k">idempotency key</span> The CSV row index. <b>Restarts at 0 in each file</b> — safe only when paired with <code>product_id</code> (D13)</td></tr>
+    <tr><td><code>author_id</code></td><td>text</td><td><span class="pill f">FK</span> 503,216 distinct. Becomes <code>3nf.author</code> / <code>dim_customer</code> — <b>identity only</b></td></tr>
+    <tr><td><code>product_id</code></td><td>text</td><td><span class="pill f">FK</span> 0 orphans — every review resolves to a real product</td></tr>
+    <tr><td><code>rating</code></td><td>smallint</td><td>1–5. The central measure; <code>CHECK</code>-constrained in the warehouse</td></tr>
+    <tr><td><code>is_recommended</code></td><td>boolean</td><td>≈15% unanswered. Left NULL, never guessed</td></tr>
+    <tr><td><code>helpfulness</code></td><td>numeric</td><td>NULL ⟺ <code>total_feedback_count = 0</code>. <b>Undefined, not missing</b> (D5)</td></tr>
+    <tr><td><code>total_feedback_count</code></td><td>integer</td><td>Verified: pos + neg = total on all 1.09M rows, 0 violations</td></tr>
+    <tr><td><code>total_pos_feedback_count</code></td><td>integer</td><td>As above</td></tr>
+    <tr><td><code>total_neg_feedback_count</code></td><td>integer</td><td>As above</td></tr>
+    <tr><td><code>submission_time</code></td><td>date</td><td>2008-08-28 → 2023-03-21. <b>Every timestamp is midnight</b>, so date grain loses nothing</td></tr>
+    <tr><td><code>review_text</code></td><td>text</td><td>350 MB. <b>Stops at the OLTP boundary</b>; only its length goes to the warehouse (D6)</td></tr>
+    <tr><td><code>review_title</code></td><td>text</td><td>Stops at the OLTP boundary</td></tr>
+    <tr><td><code>skin_tone</code>, <code>skin_type</code>, <code>eye_color</code>, <code>hair_color</code></td><td>text</td><td>Self-reported, <b>per review</b>, and they drift. This is the project's key modelling problem — see Stage 6</td></tr>
+    <tr><td><code>product_name</code>, <code>brand_name</code>, <code>price_usd</code></td><td>text/num</td><td>Repeated on every review row; agree 100% with the catalogue. Dropped at staging</td></tr>
+    <tr><td><code>source_file</code></td><td>text</td><td>Added by <code>ingest.py</code> for traceability</td></tr>
+    <tr><td><code>review_length</code></td><td>integer</td><td>Derived by <code>clean.py</code> before the text is discarded</td></tr>
+  </table>
+
+  <div class="note">
+    <div class="t">Why the catalogue is bigger than the reviewed set</div>
+    <p>8,494 products exist but only <b>2,351</b> carry reviews — and all of them are
+    Skincare. The catalogue was scraped in full; reviews only for skincare. Every
+    conclusion in this project is therefore about skincare, not about Sephora as a whole.</p>
+  </div>
+</section>
+
+<!-- ============================== 2. EXPLORE + 3. CLEAN ============================== -->
+<section>
+  <div class="stage"><span class="num">STAGE 2</span><h2>Explore — measure before deciding</h2></div>
+  <p class="lede">
+    <code>explore.py</code> runs 14 profiling checks and writes nothing. Every cleaning
+    rule and design decision downstream cites a number from here, so no rule is a guess.
+  </p>
+
+  <div class="cols">
+    <table class="tight">
+      <tr><th>What was measured</th><th class="n">Result</th></tr>
+      <tr><td>Duplicate <code>product_id</code></td><td class="n">0</td></tr>
+      <tr><td><code>brand_id</code> ↔ <code>brand_name</code></td><td class="n">1:1, 304</td></tr>
+      <tr><td>Category triples</td><td class="n">174</td></tr>
+      <tr><td>Orphan reviews</td><td class="n">0</td></tr>
+      <tr><td>Non-midnight timestamps</td><td class="n">0</td></tr>
+      <tr><td>Dupes on (author, product, date)</td><td class="n">1,040</td></tr>
+      <tr><td>Dupes on (author, product)</td><td class="n">5,525</td></tr>
+      <tr><td>Collisions on (row_id, product)</td><td class="n">0</td></tr>
+    </table>
+    <table class="tight">
+      <tr><th>What was measured</th><th class="n">Result</th></tr>
+      <tr><td>Authors with a drifting profile</td><td class="n">22,503</td></tr>
+      <tr><td>…as a share of authors</td><td class="n">4.47%</td></tr>
+      <tr><td>Reviews they wrote</td><td class="n">149,788</td></tr>
+      <tr><td>…as a share of reviews</td><td class="n">13.69%</td></tr>
+      <tr><td>Distinct profile combinations</td><td class="n">2,003</td></tr>
+      <tr><td>Feedback-count violations</td><td class="n">0</td></tr>
+      <tr><td>helpfulness ⟺ 0-votes mismatches</td><td class="n">0</td></tr>
+      <tr><td>2023 rows (held for incremental)</td><td class="n">49,531</td></tr>
+    </table>
+  </div>
+
+  <div class="note">
+    <div class="t">The measurement that changed the design</div>
+    <p><b>22,503 reviewers (4.47%) gave more than one distinct value</b> for skin tone,
+    skin type, eye colour or hair colour across their reviews — affecting <b>149,788
+    reviews, 13.69% of the dataset</b>. People's self-reported skin type is not fixed;
+    it is answered per review and it drifts. This single number is why a conventional
+    customer dimension was rejected. See Stage 6.</p>
+  </div>
+
+  <div class="stage" style="margin-top:20px"><span class="num">STAGE 3</span><h2>Clean</h2></div>
+  <p class="lede">
+    <code>clean.py</code> reads <code>data/raw/</code> and writes <code>data/processed/</code>.
+    Structural cleaning only — and it <b>never drops a column</b>.
+  </p>
+
+  <table>
+    <tr><th style="width:40mm">Rule</th><th class="n" style="width:24mm">Rows affected</th><th>Why</th></tr>
+    <tr><td>Remove exact duplicates</td><td class="n">1,040</td><td>Keyed on (author_id, product_id, submission_time). The looser key would have removed <b>5,525</b> — the 4,485 difference is legitimate re-reviews, months apart (D4)</td></tr>
+    <tr><td>Trim whitespace</td><td class="n">1,046,825 cells</td><td>1,030,753 in reviews + 16,072 in products</td></tr>
+    <tr><td><code>'Grey'</code> → <code>'gray'</code></td><td class="n">4,859</td><td>Same colour, two spellings — would have split one eye-colour group in two</td></tr>
+    <tr><td><code>'notSureST'</code> → NULL</td><td class="n">70</td><td>A "not sure" placeholder is not a skin tone</td></tr>
+    <tr><td>Derive <code>review_length</code></td><td class="n">all</td><td>Computed while the text still exists, because it is dropped at Stage 4</td></tr>
+    <tr><td>Assert <code>product_id</code> unique</td><td class="n">—</td><td>Raises and halts rather than proceeding on a broken key</td></tr>
+    <tr><td>Assert brand 1:1</td><td class="n">—</td><td>As above</td></tr>
+  </table>
+
+  <p><b>Result:</b> 1,094,411 → <b>1,093,371</b> reviews; 8,494 → 8,494 products; 0 unparseable dates. Runs in ~24 seconds.</p>
+
+  <div class="note b">
+    <div class="t">Why cleaning drops rows but never columns (D14)</div>
+    <p>Mixing row-cleaning and column-dropping in one step makes it impossible to tell
+    later which removal was a <i>cleaning rule</i> and which was a <i>scope decision</i>.
+    Every source column therefore reaches the <code>raw</code> schema, and columns are
+    trimmed exactly once, explicitly, at the raw → 3NF boundary.</p>
+  </div>
+</section>
+
+<!-- ============================== 4. OLTP ============================== -->
+<section>
+  <div class="stage"><span class="num">STAGE 4</span><h2>The OLTP database</h2></div>
+  <p class="lede">
+    <code>sephora_oltp</code> has three schemas, each with exactly one job. This is the
+    stage that demonstrates normalisation — and then deliberately undoes some of it.
+  </p>
+
+  <div class="flow">
+    <div class="fbox"><div class="h">raw</div><div class="d">1:1 mirror of the cleaned CSVs. Every source column kept. Loaded by <code>COPY</code> in one transaction.</div></div>
+    <div class="arrow">→</div>
+    <div class="fbox"><div class="h">3nf</div><div class="d">9 tables, every foreign key enforced by Postgres. Redundancy removed.</div></div>
+    <div class="arrow">→</div>
+    <div class="fbox"><div class="h">staging</div><div class="d">De-normalised again on purpose, so the ETL read is a plain <code>SELECT</code>.</div></div>
+  </div>
+
+  <h3>The 3NF model — 9 tables, all live counts</h3>
+  <table class="tight">
+    <tr><th style="width:32mm">Table</th><th class="n" style="width:22mm">Rows</th><th>Key and purpose</th></tr>
+    <tr><td><code>brand</code></td><td class="n">304</td><td><span class="pill k">brand_id PK</span> <code>brand_name</code> UNIQUE — the 1:1 was verified, not assumed</td></tr>
+    <tr><td><code>category</code></td><td class="n">174</td><td><span class="pill k">serial PK</span> UNIQUE on the <b>full triple</b>. Not a hierarchy — one secondary category appears under up to 7 primaries (D1)</td></tr>
+    <tr><td><code>product</code></td><td class="n">8,494</td><td><span class="pill f">FK → brand, category</span></td></tr>
+    <tr><td><code>author</code></td><td class="n">503,216</td><td><span class="pill k">author_id PK</span> <b>No descriptive attributes at all</b> (D2)</td></tr>
+    <tr><td><code>skin_tone</code></td><td class="n">13</td><td>Lookup table</td></tr>
+    <tr><td><code>skin_type</code></td><td class="n">4</td><td>Lookup table</td></tr>
+    <tr><td><code>eye_color</code></td><td class="n">5</td><td>Lookup table</td></tr>
+    <tr><td><code>hair_color</code></td><td class="n">7</td><td>Lookup table</td></tr>
+    <tr><td><code>review</code></td><td class="n">1,093,371</td><td><span class="pill f">FK → author, product + the 4 lookups</span> The four reviewer attributes live <b>here</b>, at review grain</td></tr>
+  </table>
+
+  <h3>What changes at each boundary</h3>
+  <table class="tight">
+    <tr><th style="width:38mm">Boundary</th><th>What happens</th></tr>
+    <tr><td>CSV → <code>raw</code></td><td><code>COPY</code>, truncate-and-reload inside one transaction. Loaded counts asserted against what <code>clean.py</code> reported — a mismatch raises</td></tr>
+    <tr><td><code>raw</code> → <code>3nf</code></td><td><b>Columns are dropped here and only here</b>: <code>ingredients</code>, <code>highlights</code>, the variation and child-price columns, and the review columns that duplicate the catalogue. Brand and category are extracted into their own tables. Missing reviewer attributes become <b>NULL foreign keys</b></td></tr>
+    <tr><td><code>3nf</code> → <code>staging</code></td><td>Dimension attributes pre-joined back on. <code>review_text</code> and <code>review_title</code> are <b>left behind permanently</b> (D6). NULL → the string <code>'Unknown'</code> happens <b>here</b>, not in 3NF</td></tr>
+  </table>
+
+  <div class="note b">
+    <div class="t">Why normalise and then de-normalise</div>
+    <p>The two layers answer different questions. <code>3nf</code> answers "is this data
+    internally consistent?" — enforced by foreign keys, with a missing value as a NULL FK.
+    <code>staging</code> answers "what is the average rating by brand?" — optimised for
+    reads, with a missing value as the string <code>'Unknown'</code>. Building both is
+    what demonstrates the difference between an OLTP model and a dimensional one, rather
+    than asserting it.</p>
+  </div>
+
+  <p><b>Verified end to end:</b> 0 row gap on both products and reviews across all three
+  layers, and all 6 integrity checks return 0.</p>
+</section>
+
+<!-- ============================== 5. ETL ============================== -->
+<section>
+  <div class="stage"><span class="num">STAGE 5</span><h2>ETL — OLTP to warehouse</h2></div>
+  <p class="lede">
+    Five modules in <code>etl/</code>, one responsibility each. The same functions run
+    from the command line and from Airflow — there is no second implementation.
+  </p>
+
+  <div class="flow">
+    <div class="fbox"><div class="h">extract</div><div class="d">Reads <code>staging</code>. Three modes.</div></div>
+    <div class="arrow">→</div>
+    <div class="fbox"><div class="h">transform</div><div class="d">Natural keys → surrogate keys. Returns (rows, drops-by-reason).</div></div>
+    <div class="arrow">→</div>
+    <div class="fbox"><div class="h">reconcile</div><div class="d">in = out + dropped, <b>or raise</b>.</div></div>
+    <div class="arrow">→</div>
+    <div class="fbox"><div class="h">quality</div><div class="d">A gate. Never repairs.</div></div>
+    <div class="arrow">→</div>
+    <div class="fbox"><div class="h">load</div><div class="d"><code>ON CONFLICT DO NOTHING</code> everywhere.</div></div>
+  </div>
+
+  <h3>The three load modes (D17)</h3>
+  <table>
+    <tr><th style="width:26mm">Mode</th><th style="width:44mm">Bound</th><th class="n" style="width:22mm">Rows</th><th>Purpose</th></tr>
+    <tr><td><code>full</code></td><td>No date bound</td><td class="n">1,093,371</td><td>Everything, in one command</td></tr>
+    <tr><td><code>historical</code></td><td><code>&lt; 2023-01-01</code></td><td class="n">1,043,868</td><td>The demo baseline — deliberately holds 2023 back</td></tr>
+    <tr><td><code>incremental</code></td><td><code>&gt; watermark</code></td><td class="n">49,503</td><td>Only what is new</td></tr>
+  </table>
+
+  <p>The old design had a <code>--full-reload</code> flag that stopped at 2023 while
+  calling itself full, and no way to load everything at once. Three honest names replaced it.</p>
+
+  <h3>The watermark</h3>
+  <p>
+    <code>MAX(submission_date)</code> read <b>from the fact table itself</b>, so it cannot
+    disagree with the data it describes. Two details that matter:
+  </p>
+  <table class="tight">
+    <tr><td style="width:52mm"><b>Captured before any write</b></td><td>Read at the start of the extract task, so it cannot advance past rows the same run is loading</td></tr>
+    <tr><td><b>Strictly <code>&gt;</code>, not <code>&gt;=</code></b></td><td>A current watermark extracts <b>0</b> rows, rather than re-offering the same day forever</td></tr>
+  </table>
+
+  <h3>Reconciliation — the rule that makes silent loss impossible (D19)</h3>
+  <p>
+    Every row entering a stage must leave it either transformed or dropped <b>for a named
+    reason</b>. Reasons are reported even when zero, so "nothing was dropped" is
+    distinguishable from "this was never checked". An unexplained gap raises
+    <code>ReconciliationError</code> and fails the run.
+  </p>
+  <pre>fact_reviews: row counts do not balance. extracted=100, transformed=90,
+dropped=5 (accounted=95), UNEXPLAINED=5.</pre>
+  <p class="muted" style="font-size:8.4pt">The four named drop reasons: unresolved product,
+  unresolved customer, unresolved reviewer profile, out-of-range date.</p>
+
+  <h3>Idempotency — measured, not asserted</h3>
+  <table class="tight">
+    <tr><th>Scenario</th><th class="n" style="width:26mm">Offered</th><th class="n" style="width:26mm">Inserted</th></tr>
+    <tr><td>First historical load</td><td class="n">1,043,868</td><td class="n">1,043,868</td></tr>
+    <tr><td>Re-run of the same load</td><td class="n">1,043,868</td><td class="n"><b>0</b></td></tr>
+    <tr><td>Incremental, watermark 2022-12-31</td><td class="n">49,503</td><td class="n">49,503</td></tr>
+    <tr><td>Re-run incremental, watermark current</td><td class="n"><b>0</b></td><td class="n">0</td></tr>
+  </table>
+</section>
+
+<!-- ============================== 6. WAREHOUSE ============================== -->
+<section>
+  <div class="stage"><span class="num">STAGE 6</span><h2>The warehouse — star schema</h2></div>
+  <p class="lede">
+    <code>sephora_dw</code>, schema <code>dw</code>. Grain of the fact table:
+    <b>one row per review.</b>
+  </p>
+
+  <pre>                        dim_brand (304)
+                              |  brand_key
+                              v
+    dim_date  &lt;------------  dim_product (8,494)
+    (5,379)     date_key          |  product_key
+       ^                          v
+       +---------------  fact_reviews (1,093,371)  -------+
+                                  |                       |
+                     customer_key |                       | reviewer_profile_key
+                                  v                       v
+                      dim_customer (503,216)   dim_reviewer_profile (1,896)
+                      identity only (D2)       junk dimension (D2)</pre>
+
+  <h3>Dimensions</h3>
+  <table class="tight">
+    <tr><th style="width:38mm">Table</th><th class="n" style="width:18mm">Rows</th><th>Key columns and notes</th></tr>
+    <tr><td><code>dim_date</code></td><td class="n">5,379</td><td><span class="pill k">date_key INT</span> <code>YYYYMMDD</code>. Range <b>derived from the data</b> with 30 days padding, not hardcoded (D12)</td></tr>
+    <tr><td><code>dim_brand</code></td><td class="n">304</td><td><span class="pill k">brand_key serial</span> <code>brand_id</code> UNIQUE</td></tr>
+    <tr><td><code>dim_product</code></td><td class="n">8,494</td><td><span class="pill k">product_key serial</span> <span class="pill f">FK → dim_brand</span> All three category levels flattened on; price, <code>price_band</code>, size, loves, 5 flags</td></tr>
+    <tr><td><code>dim_customer</code></td><td class="n">503,216</td><td><span class="pill k">customer_key serial</span> <b>Shopper identity only</b> — no descriptive attributes</td></tr>
+    <tr><td><code>dim_reviewer_profile</code></td><td class="n">1,896</td><td><span class="pill k">junk dimension</span> UNIQUE on (skin_tone, skin_type, eye_color, hair_color)</td></tr>
+  </table>
+
+  <h3>fact_reviews</h3>
+  <table class="tight">
+    <tr><th style="width:38mm">Column group</th><th>Contents</th></tr>
+    <tr><td>Surrogate key</td><td><code>review_key serial</code></td></tr>
+    <tr><td>Idempotency key</td><td><span class="pill k">UNIQUE (source_row_id, product_id)</span> — verified to collide 0 times across all 1,094,411 source rows (D13)</td></tr>
+    <tr><td>Foreign keys</td><td><code>product_key</code>, <code>customer_key</code>, <code>reviewer_profile_key</code>, <code>date_key</code> — all four indexed</td></tr>
+    <tr><td>Measures</td><td><code>rating</code> (CHECK 1–5), <code>is_recommended</code>, <code>helpfulness</code>, three feedback counts, <code>review_length</code></td></tr>
+    <tr><td>Watermark</td><td><code>submission_date</code></td></tr>
+  </table>
+
+  <div class="note">
+    <div class="t">The decision worth defending — why a junk dimension (D2)</div>
+    <p>The obvious design puts skin tone, skin type, eye colour and hair colour on a
+    customer dimension keyed uniquely on the reviewer. Measured against this data, that
+    breaks: <b>22,503 reviewers (4.47%) report more than one distinct value</b>, and
+    because prolific reviewers are over-represented among them, those reviewers account
+    for <b>149,788 reviews — 13.69% of the dataset</b>.</p>
+    <p style="margin-top:5px">One row per customer forces one profile per person, so
+    roughly <b>one review in seven</b> would carry a profile the reviewer never gave on
+    that review — silently, with no constraint violation and nothing downstream to notice.
+    It would have quietly corrupted BQ4 specifically. The fix: <code>dim_customer</code>
+    keeps identity only, and a <b>1,896-row junk dimension</b> holds the four attributes
+    at the grain they were actually recorded.</p>
+  </div>
+
+  <div class="note b">
+    <div class="t">No brand_key on the fact table (D11)</div>
+    <p>Brand is functionally determined by product, so a copy on the fact adds no
+    information and creates a way for the two to disagree. It lives on
+    <code>dim_product</code> only.</p>
+  </div>
+</section>
+
+<!-- ============================== 7. QUALITY ============================== -->
+<section>
+  <div class="stage"><span class="num">STAGE 7</span><h2>The quality gate</h2></div>
+  <p class="lede">
+    <code>etl/quality.py</code> is a <b>gate, not a fixer</b>. It raises
+    <code>DataQualityError</code>; it never repairs data. Repairing at load time would
+    hide the fact that something upstream is wrong.
+  </p>
+
+  <h3>The seven checks</h3>
+  <table class="tight">
+    <tr><th style="width:52mm">Check</th><th style="width:24mm">Severity</th><th>What it catches</th></tr>
+    <tr><td><code>check_row_count</code></td><td><b>hard failure</b></td><td>An empty or truncated batch</td></tr>
+    <tr><td><code>check_no_null_keys</code></td><td><b>hard failure</b></td><td>A null surrogate key — named by column, instead of a bare Postgres NOT NULL violation mid-insert</td></tr>
+    <tr><td><code>check_no_negative_values</code></td><td><b>hard failure</b></td><td>A negative feedback count means the transform corrupted something</td></tr>
+    <tr><td><code>check_value_range</code></td><td><b>hard failure</b></td><td>Rating outside 1–5</td></tr>
+    <tr><td><code>check_referential_integrity</code></td><td><b>hard failure</b></td><td>A key absent from its dimension — before the FK rejects it</td></tr>
+    <tr><td><code>check_unique_key</code></td><td><b>hard failure</b></td><td>Duplicate (source_row_id, product_id)</td></tr>
+    <tr><td><code>check_null_rate</code></td><td>warning</td><td>A <i>shift</i> in null rate, e.g. <code>is_recommended</code> suddenly arriving 90% null</td></tr>
+  </table>
+
+  <div class="note">
+    <div class="t">Why two severities and not all-fatal (D21)</div>
+    <p>All-fatal sounds rigorous and is a trap: it means the only checks worth writing are
+    ones you would stop production for, so anything softer never gets written and the gate
+    stays silent about things worth knowing. <code>is_recommended</code> is legitimately
+    ~15% null and <code>helpfulness</code> is undefined wherever nobody voted — failing a
+    run over that would be wrong, and saying nothing would be worse.</p>
+    <p style="margin-top:5px">Warnings are logged <b>before</b> the hard-failure raise, so
+    a run that dies still leaves its warnings behind.</p>
+  </div>
+
+  <h3>Behaviour</h3>
+  <table class="tight">
+    <tr><td style="width:46mm"><b>Hard failure</b></td><td>Halts <b>before any write</b>. In Airflow it raises <code>AirflowFailException</code>, which fails fast rather than burning the 2-retry budget — bad data will not become good on a second attempt</td></tr>
+    <tr><td><b>Warning</b></td><td>Logged, run continues</td></tr>
+    <tr><td><b>Empty batch</b></td><td>Gate skipped, run succeeds. An incremental run with nothing new is a clean no-op, not a crash</td></tr>
+  </table>
+
+  <h3>Proven by fault injection</h3>
+  <p>
+    The point is not that clean data passes — every run proves that. The point is that
+    dirty data <b>fails</b>. A gate never observed to fail is indistinguishable from a gate
+    that cannot fail. <b>15 tests</b> each start from one valid frame and break exactly one
+    thing, so a failure names the defect. All 15 pass.
+  </p>
+</section>
+
+<!-- ============================== 8. AIRFLOW ============================== -->
+<section>
+  <div class="stage"><span class="num">STAGE 8</span><h2>Orchestration — the Airflow DAG</h2></div>
+  <p class="lede">
+    <code>sephora_dw_pipeline_staged</code> — <b>15 tasks, 21 edges</b>, Airflow 3.3.0,
+    LocalExecutor. Load mode is chosen from the UI as an enum parameter.
+  </p>
+
+  <pre>create_staging_tables
+      |
+      +--> extract_brand   -> load_brand -> extract_product -> load_product --+
+      |                                                                       |
+      +--> extract_customer ------> load_customer --------------------------+ |
+      |                                                                     | |
+      +--> extract_profile -------> load_profile ---------------------------+ |
+      |                                                                     | |
+      +--> load_dim_date ---------------------------------------------------+ |
+      |                                                                     | |
+      +--> extract_fact_to_staging -----------------------------------------+ |
+                                                                            | |
+                                     transform_fact_staged &lt;----------------+-+
+                                              |
+                                     quality_check_fact_staged
+                                              |
+                                     load_fact_from_staging
+                                              :
+                                     cleanup_staging  [teardown]</pre>
+
+  <table class="tight">
+    <tr><th style="width:46mm">Design point</th><th>Reason</th></tr>
+    <tr><td>Three dimension branches in parallel</td><td>They share no dependency. <code>product</code> waits on <code>brand</code> because it resolves <code>brand_key</code></td></tr>
+    <tr><td>Fact split into 4 staged tasks</td><td>Each is independently retryable, a load failure does not re-hit the OLTP source, and the Graph view <b>names the stage</b> that failed instead of showing one red box</td></tr>
+    <tr><td>No row data in XCom</td><td>XCom is metadata storage. 503,216 customer rows through it would abuse the metadata database. Intermediate results go to <code>dw.stg_*</code> tables scoped by <code>batch_id = run_id</code></td></tr>
+    <tr><td>Retry deletes its own batch first</td><td>A retry re-uses the same <code>run_id</code>, so staged rows are deleted before re-staging — otherwise a retry after a partial write silently doubles everything</td></tr>
+    <tr><td>Fact loads in 100,000-row chunks</td><td>The first full run was <b>SIGKILLed</b>: materialising 1,043,868 rows and then building a list of tuples meant two full copies resident at once (D15)</td></tr>
+  </table>
+
+  <div class="note">
+    <div class="t">The bug worth presenting — a green run over an empty warehouse (D20 → D24)</div>
+    <p><code>cleanup_staging</code> uses <code>trigger_rule="all_done"</code> so a failed
+    run still clears its staging rows. Correct in itself — but it made cleanup the last
+    <b>leaf</b> task, and Airflow derives a DAG run's state from its leaves:</p>
+    <p style="margin-top:5px"><code>extract fails → cleanup still runs → cleanup succeeds →
+    the only leaf is green → <b>the DAG run reports SUCCESS</b></code></p>
+    <p style="margin-top:5px">A green run that loaded nothing is worse than a red one,
+    because nobody investigates it. It was first fixed with a watcher task wired downstream
+    of all 15 others — 15 of the DAG's 33 edges existed purely for failure reporting. It is
+    now fixed by marking cleanup a <b>teardown</b>: Airflow excludes ignorable teardowns
+    from run-state calculation, so <code>load_fact_from_staging</code> becomes the effective
+    leaf and failure reaches it as <code>upstream_failed</code>. Same guarantee, 15 tasks
+    and 21 edges instead of 16 and 33.</p>
+  </div>
+
+  <h3>Verified by forcing a failure, not by reading the docs</h3>
+  <table class="tight">
+    <tr><th>Observation</th><th>Result</th></tr>
+    <tr><td><code>extract_fact_to_staging</code></td><td>failed (injected)</td></tr>
+    <tr><td>transform / quality / load_fact</td><td><code>upstream_failed</code> — propagation reaches the leaf</td></tr>
+    <tr><td><code>cleanup_staging</code></td><td><b>success</b> — the teardown still cleaned up</td></tr>
+    <tr><td>DAG run state</td><td><b>FAILED</b> — a green cleanup beside a red run</td></tr>
+    <tr><td>Staging tables afterwards</td><td>All 6 at <b>0 rows</b></td></tr>
+  </table>
+  <p class="muted" style="font-size:8.4pt">
+    That injection also exposed a latent race: cleanup waited only on <code>load_fact</code>,
+    so a short-circuiting fact chain let it run before the dimension branches had staged,
+    stranding 513,606 rows. Cleanup now waits on all four staging writers.
+  </p>
+
+  <h3>Measured runs</h3>
+  <table class="tight">
+    <tr><th>Run</th><th class="n" style="width:22mm">Duration</th><th>Result</th></tr>
+    <tr><td><code>historical</code></td><td class="n">134 s</td><td>All tasks green; 1,043,868 fact rows</td></tr>
+    <tr><td><code>incremental</code></td><td class="n">22 s</td><td>All tasks green; +49,503 → 1,093,371 total</td></tr>
+  </table>
+</section>
+
+<!-- ============================== 9. DASHBOARD ============================== -->
+<section>
+  <div class="stage"><span class="num">STAGE 9</span><h2>The dashboard</h2></div>
+  <p class="lede">
+    Streamlit over <code>sephora_dw</code>. <b>One page</b>, five business questions, a
+    live Postgres connection — not a static export.
+  </p>
+
+  <table class="tight">
+    <tr><th style="width:16mm">#</th><th style="width:54mm">Question</th><th>What the data says</th></tr>
+    <tr><td><b>BQ5</b></td><td>How do volume and rating trend over time?</td><td>Volume grew twelve years to a peak, then eased. Rating dipped to 4.21 in 2020 and recovered to 4.34</td></tr>
+    <tr><td><b>BQ1</b></td><td>Which brands rate best and worst?</td><td>MARA 4.86 → Topicals 3.66 — a spread of <b>1.20 stars</b>, the largest effect anywhere on the page</td></tr>
+    <tr><td><b>BQ1b</b></td><td>Which categories rate best?</td><td>Cleansers 4.344 → Self Tanners 4.080. Spread of 0.26 — <b>category matters far less than brand</b></td></tr>
+    <tr><td><b>BQ3</b></td><td>Does price predict satisfaction?</td><td><b>An inverted U.</b> 4.238 under $15 → <b>4.334 at $50–100</b> → 4.271 above $100. Agreement peaks in the <b>same band</b> (std dev 1.0996, widening to 1.1366 above $100), so $50–100 is the sweet spot on both measures</td></tr>
+    <tr><td><b>BQ2</b></td><td>Hype vs reality</td><td>The Ordinary Vitamin C 23%: <b>132,601 loves, 3.45 rating</b>. Loves are recorded before purchase, ratings after — the gap is marketing outperforming the product</td></tr>
+    <tr><td><b>BQ4</b></td><td>Do reviewer profile or review length matter?</td><td>Both barely. Skin type moves the average 0.04. Review length moves it almost not at all — but short reviews are <b>polarised</b>: 1★ share falls 8.15%→3.73% <i>and</i> 5★ share falls 67.35%→62.52%, so both tails shrink and cancel in the mean</td></tr>
+  </table>
+
+  <h3>Filters</h3>
+  <table class="tight">
+    <tr><th style="width:40mm">Control</th><th style="width:44mm">Binds into</th><th>Scope</th></tr>
+    <tr><td><b>Category</b> (multiselect)</td><td><code>secondary_category = ANY(%s)</code></td><td>Brands, categories, hype, skin type, product explorer</td></tr>
+    <tr><td><b>Minimum reviews per brand</b></td><td><code>WHERE review_count &gt;= %s</code></td><td>The brand chart</td></tr>
+    <tr><td><b>Brand</b> (multiselect)</td><td><code>brand_name = ANY(%s)</code></td><td>Product explorer</td></tr>
+    <tr><td><b>Product name contains</b></td><td><code>product_name ILIKE %s</code></td><td>Product explorer</td></tr>
+    <tr><td><b>Refresh data</b></td><td>Clears the query cache</td><td>Whole page</td></tr>
+  </table>
+
+  <div class="note b">
+    <div class="t">Controls are query parameters, not dataframe filters (D23)</div>
+    <p>Every control above binds into the SQL and Postgres is asked again. A client-side
+    filter over a preloaded frame would look identical on screen and be a different claim
+    entirely — the tests assert this per control by moving one and requiring the
+    corresponding caption to change.</p>
+    <p style="margin-top:5px"><b>The trend and price-band sections stay catalogue-wide</b>
+    and are labelled <i>all categories</i>, because their views aggregate the category
+    column away. A filter applied to them would do nothing while appearing to work.</p>
+  </div>
+
+  <h3>Charts that had to change form</h3>
+  <p>
+    Most effects here are a tenth of a star, so axes must be truncated to show them — and
+    <b>a truncated axis under bars misleads</b>, because bar length is read from zero. On
+    the original price chart "Under $15" (4.2383) was drawn about six times shorter than
+    "$50–100" (4.3335): a 2% difference rendered as 600%. Price became a line across the
+    ordered bands; category and skin type became dot plots. A dot encodes <i>position</i>,
+    so the same truncation is honest.
+  </p>
+  <p>
+    Review length became <b>small multiples</b>. The 1★ share (3–8%) and 5★ share (61–67%)
+    are on different scales; on one axis the 1★ decline — half the finding — flattened into
+    a strip along the baseline. A second y-axis would have invented a relationship rather
+    than fixed one.
+  </p>
+
+  <h3>Why this is demonstrably live</h3>
+  <p>
+    Load <code>historical</code> mode, run the incremental DAG, press <b>Refresh data</b> —
+    the review count moves from 1,043,868 to <b>1,093,371</b> and the watermark advances to
+    2023-03-21, on screen. A CSV export could not do that, and a screenshot certainly could
+    not.
+  </p>
+
+  <div class="foot">
+    Every number in this document was measured from the running system on 2026-08-12.
+    Reproduce them with <code>sql/validation/dashboard_checks.sql</code> — all 10
+    full-population views reconcile to <code>fact_reviews</code> at exactly 1,093,371,
+    with 0 orphan keys and 0 duplicate idempotency keys.
+  </div>
+</section>
+
+</body>
+</html>

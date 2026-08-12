@@ -351,7 +351,7 @@ def bq5_trend():
     # does not risk touching one.
     partial = trend["is_partial_month"].astype(bool)
     box = card(
-      "Review volume by month",
+      "Review volume by month — all categories",
       "Monthly counts. The final bar is <span style='color:%s'>grey</span> "
       "because March 2023 is a partial month — the data ends on the 21st."
       % MUTED)
@@ -395,13 +395,31 @@ def bq5_trend():
 # BQ1 — brands and categories
 # --------------------------------------------------------------------------
 
-def bq1_brands(min_reviews, overall_rating):
-  brands = q("""
-    SELECT brand_name, review_count, avg_rating, recommend_pct
-    FROM dw.vw_rating_by_brand
-    WHERE review_count >= %s
-    ORDER BY avg_rating DESC
-  """, (int(min_reviews),))
+def bq1_brands(min_reviews, overall_rating, categories, scoped):
+  # Two queries, one per scope, rather than one query with a clever predicate.
+  # When nothing is filtered, vw_rating_by_brand is the authoritative brand
+  # aggregate and is what dashboard_checks.sql validates. When a category
+  # filter is on, the brand-by-category view is re-aggregated with a
+  # review-count-WEIGHTED mean — averaging the per-category averages would
+  # weight a 12-review category the same as a 300,000-review one.
+  if scoped:
+    brands = q("""
+      SELECT brand_name,
+             sum(review_count)                                            AS review_count,
+             round(sum(avg_rating * review_count) / sum(review_count), 4) AS avg_rating
+      FROM dw.vw_rating_by_brand_category
+      WHERE secondary_category = ANY(%s)
+      GROUP BY brand_name
+      HAVING sum(review_count) >= %s
+      ORDER BY avg_rating DESC
+    """, (categories, int(min_reviews)))
+  else:
+    brands = q("""
+      SELECT brand_name, review_count, avg_rating
+      FROM dw.vw_rating_by_brand
+      WHERE review_count >= %s
+      ORDER BY avg_rating DESC
+    """, (int(min_reviews),))
 
   if brands.empty:
     section("BQ1 · Which brands rate best, and which underperform?",
@@ -454,15 +472,16 @@ def bq1_brands(min_reviews, overall_rating):
   )
 
 
-def bq1_categories():
+def bq1_categories(categories):
   cats = q("""
     SELECT secondary_category,
            sum(review_count)                                            AS reviews,
            round(sum(avg_rating * review_count) / sum(review_count), 4) AS avg_rating
     FROM dw.vw_rating_by_category
+    WHERE secondary_category = ANY(%s)
     GROUP BY secondary_category
     ORDER BY avg_rating
-  """)
+  """, (categories,))
   if cats.empty:
     return
 
@@ -542,7 +561,7 @@ def bq3_price():
   left, right = st.columns(2)
 
   with left:
-    box = card("Average rating by price band",
+    box = card("Average rating by price band — all categories",
                "Ordered bands, so the line is meaningful — this is the "
                "inverted U. Marker shade deepens with price.")
     # A line across ORDERED bands, not bars. The whole spread is 0.095 of a
@@ -595,13 +614,14 @@ def bq3_price():
 # BQ2 — hype vs reality
 # --------------------------------------------------------------------------
 
-def bq2_hype():
+def bq2_hype(categories):
   hype = q("""
-    SELECT product_name, brand_name, price_usd, loves_count,
-           review_count, avg_rating, hype_gap
+    SELECT product_name, brand_name, secondary_category, price_usd,
+           loves_count, review_count, avg_rating, hype_gap
     FROM dw.vw_hype_vs_reality
+    WHERE secondary_category = ANY(%s)
     ORDER BY hype_gap DESC
-  """)
+  """, (categories,))
   if hype.empty:
     return
 
@@ -690,16 +710,17 @@ def bq2_hype():
 # BQ4 + review length
 # --------------------------------------------------------------------------
 
-def bq4_and_length():
+def bq4_and_length(categories):
   skin = q("""
     SELECT skin_type,
            sum(review_count)                                            AS reviews,
            round(sum(avg_rating * review_count) / sum(review_count), 4) AS avg_rating
     FROM dw.vw_rating_by_skin_type
+    WHERE secondary_category = ANY(%s)
     GROUP BY skin_type
     HAVING sum(review_count) >= 1000
     ORDER BY avg_rating DESC
-  """)
+  """, (categories,))
 
   length = q("""
     SELECT length_bucket, bucket_order, review_count, avg_rating,
@@ -798,6 +819,89 @@ def bq4_and_length():
 
 
 # --------------------------------------------------------------------------
+# Product explorer — the product-level filter
+#
+# Kept as its own section rather than as more sidebar controls. Its brand and
+# search boxes sit directly above the only thing they scope, so there is never
+# a question about which part of the page a control affects — the failure mode
+# the sidebar Category filter has to explain with a note.
+# --------------------------------------------------------------------------
+
+def product_explorer(categories):
+  section(
+    "Explore · find a category, brand or product",
+    "Everything above is an aggregate. This is the row-level view behind it — "
+    "filter down to a single product and read its actual numbers.")
+
+  brands = q("""
+    SELECT DISTINCT brand_name
+    FROM dw.vw_hype_vs_reality
+    WHERE secondary_category = ANY(%s)
+    ORDER BY 1
+  """, (categories,))["brand_name"].tolist()
+
+  c1, c2 = st.columns([1, 1])
+  with c1:
+    picked = st.multiselect(
+      "Brand", options=brands, default=[],
+      help="Empty means every brand in the selected categories.")
+  with c2:
+    search = st.text_input(
+      "Product name contains", value="",
+      placeholder="e.g. vitamin c, cleanser, retinol",
+      help="Case-insensitive substring match, applied in SQL as ILIKE, not as "
+           "a filter over a preloaded frame.")
+
+  # Both filters bind into the query. The brand list is passed as a real array
+  # parameter and the search as an ILIKE pattern — neither is interpolated into
+  # the SQL string, so a product name containing a quote cannot break the page.
+  #
+  # Note the doubled percent in the "Recommend" alias below. psycopg2 scans the
+  # ENTIRE query string for placeholders before sending it, including inside
+  # comments and quoted identifiers, so a lone % anywhere in this string is
+  # read as the start of a parameter and the bind fails with a bare
+  # "tuple index out of range". Doubling it escapes it back to one.
+  rows = q("""
+    SELECT brand_name        AS "Brand",
+           product_name      AS "Product",
+           secondary_category AS "Category",
+           price_usd         AS "Price (USD)",
+           review_count      AS "Reviews",
+           avg_rating        AS "Avg rating",
+           recommend_pct     AS "Recommend %%",
+           loves_count       AS "Loves",
+           hype_gap          AS "Hype gap"
+    FROM dw.vw_hype_vs_reality
+    WHERE secondary_category = ANY(%s)
+      AND (%s = 0 OR brand_name = ANY(%s))
+      AND (%s = '' OR product_name ILIKE %s)
+    ORDER BY review_count DESC
+  """, (categories, len(picked), picked or [""], search, f"%{search}%"))
+
+  if rows.empty:
+    st.info("No product matches those filters. Clear the search box or widen "
+            "the category selection.")
+    return
+
+  st.dataframe(rows, hide_index=True, use_container_width=True, height=420,
+               column_config={
+                 "Price (USD)": st.column_config.NumberColumn(format="$%.2f"),
+                 "Reviews": st.column_config.NumberColumn(format="%d"),
+                 "Loves": st.column_config.NumberColumn(format="%d"),
+                 "Avg rating": st.column_config.NumberColumn(format="%.2f"),
+                 "Hype gap": st.column_config.NumberColumn(format="%.3f"),
+               })
+
+  st.caption(
+    f"**{len(rows):,}** products match. Click a column header to sort. "
+    f"Population is `vw_hype_vs_reality` — products with **at least 50 "
+    f"reviews** (1,660 of 2,351 reviewed products), because rating and hype "
+    f"gap are both unstable below that. **Hype gap** is loves-percentile minus "
+    f"rating-percentile: positive means more wanted than liked."
+  )
+
+
+# --------------------------------------------------------------------------
 # Data quality — recomputed at render time, never read from a stored summary
 # --------------------------------------------------------------------------
 
@@ -888,6 +992,7 @@ def data_quality_panel():
       SELECT 'vw_kpi_summary' AS view_name, total_reviews AS reviews FROM dw.vw_kpi_summary
       UNION ALL SELECT 'vw_rating_by_brand',         sum(review_count) FROM dw.vw_rating_by_brand
       UNION ALL SELECT 'vw_rating_by_category',      sum(review_count) FROM dw.vw_rating_by_category
+      UNION ALL SELECT 'vw_rating_by_brand_category', sum(review_count) FROM dw.vw_rating_by_brand_category
       UNION ALL SELECT 'vw_rating_by_price_band',    sum(review_count) FROM dw.vw_rating_by_price_band
       UNION ALL SELECT 'vw_review_trend_monthly',    sum(review_count) FROM dw.vw_review_trend_monthly
       UNION ALL SELECT 'vw_review_volume_by_month',  sum(review_count) FROM dw.vw_review_volume_by_month
@@ -927,6 +1032,27 @@ def sidebar():
   st.sidebar.caption("Live analytics over `sephora_dw`.")
   st.sidebar.divider()
 
+  all_categories = q("""
+    SELECT DISTINCT secondary_category
+    FROM dw.vw_rating_by_category
+    WHERE secondary_category IS NOT NULL
+    ORDER BY 1
+  """)["secondary_category"].tolist()
+
+  categories = st.sidebar.multiselect(
+    "Category", options=all_categories, default=all_categories,
+    help="Secondary category. Primary is always 'Skincare' in this dataset "
+         "(D16), so secondary is the level that actually varies. Binds into "
+         "SQL as `secondary_category = ANY(%s)`.",
+  )
+  # Empty selection would produce five empty charts and read as a broken app.
+  # Treat it as "no filter", and say so, rather than silently substituting.
+  if not categories:
+    st.sidebar.caption("⚠ Nothing selected — showing **all** categories.")
+    categories = all_categories
+
+  scoped = len(categories) < len(all_categories)
+
   min_reviews = st.sidebar.number_input(
     "Minimum reviews per brand",
     min_value=1, max_value=5000, value=500, step=50,
@@ -962,7 +1088,21 @@ def sidebar():
       "`sql/validation/dashboard_checks.sql`. If the two disagree, this "
       "dashboard is wrong."
     )
-  return min_reviews
+
+  with st.sidebar.expander("What the Category filter scopes"):
+    st.markdown(
+      "**Responds:** brands · categories · hype vs reality · skin type · "
+      "product explorer.\n\n"
+      "**Does not:** the volume/rating trend and the price bands. Those come "
+      "from `vw_review_volume_by_month` and `vw_rating_by_price_band`, which "
+      "aggregate away the category column — a filter applied to them would do "
+      "nothing while appearing to work. Each is labelled *all categories* on "
+      "the page so the scope is never ambiguous.\n\n"
+      "The brand chart responds because `vw_rating_by_brand_category` was "
+      "added for exactly this; brand-level figures are re-aggregated with a "
+      "review-count-weighted mean, not an average of averages."
+    )
+  return categories, scoped, min_reviews
 
 
 # --------------------------------------------------------------------------
@@ -981,25 +1121,35 @@ def main():
     )
     st.stop()
 
-  min_reviews = sidebar()
+  categories, scoped, min_reviews = sidebar()
 
   k = header_and_kpis()
+  if scoped:
+    shown = ", ".join(categories[:6]) + ("…" if len(categories) > 6 else "")
+    st.info(
+      f"Scoped to **{len(categories)}** categor"
+      f"{'y' if len(categories) == 1 else 'ies'} — {shown}. The KPI row above "
+      f"and the two sections marked *all categories* stay catalogue-wide; the "
+      f"sidebar note **What the Category filter scopes** says why.")
   st.divider()
 
   bq5_trend()
   st.divider()
 
-  bq1_brands(min_reviews, float(k["avg_rating"]))
-  bq1_categories()
+  bq1_brands(min_reviews, float(k["avg_rating"]), categories, scoped)
+  bq1_categories(categories)
   st.divider()
 
   bq3_price()
   st.divider()
 
-  bq2_hype()
+  bq2_hype(categories)
   st.divider()
 
-  bq4_and_length()
+  bq4_and_length(categories)
+  st.divider()
+
+  product_explorer(categories)
   st.divider()
 
   data_quality_panel()

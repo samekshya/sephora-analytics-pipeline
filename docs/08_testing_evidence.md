@@ -1,6 +1,6 @@
 # 08 — Testing Evidence
 
-**49 tests, 49 passing**, plus 11 DAG structural assertions verified inside the
+**51 tests, 51 passing**, plus 11 DAG structural assertions verified inside the
 Airflow container. Last full run: **2026-08-12**.
 
 ```
@@ -19,7 +19,7 @@ tests/verify_dag_in_container.py             11 asserts runs inside the containe
 ```powershell
 py -m pip install -r requirements.txt -r requirements-dev.txt
 
-py -m pytest -q                     # everything    -> 49 passed, 1 skipped
+py -m pytest -q                     # everything    -> 51 passed, 1 skipped
 py -m pytest -m "not integration"   # unit only, no database needed
 py -m pytest tests/unit/test_quality.py -q -k rating    # one concern
 

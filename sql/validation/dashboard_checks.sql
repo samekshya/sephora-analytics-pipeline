@@ -28,6 +28,7 @@ WITH totals AS (
     UNION ALL SELECT 'vw_kpi_summary',        total_reviews FROM dw.vw_kpi_summary
     UNION ALL SELECT 'vw_rating_by_brand',    sum(review_count) FROM dw.vw_rating_by_brand
     UNION ALL SELECT 'vw_rating_by_category', sum(review_count) FROM dw.vw_rating_by_category
+    UNION ALL SELECT 'vw_rating_by_brand_category', sum(review_count) FROM dw.vw_rating_by_brand_category
     UNION ALL SELECT 'vw_rating_by_price_band', sum(review_count) FROM dw.vw_rating_by_price_band
     UNION ALL SELECT 'vw_review_trend_monthly', sum(review_count) FROM dw.vw_review_trend_monthly
     UNION ALL SELECT 'vw_review_volume_by_month', sum(review_count) FROM dw.vw_review_volume_by_month
