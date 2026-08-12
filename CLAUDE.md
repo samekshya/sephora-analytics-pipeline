@@ -27,7 +27,7 @@ tasks / 33 edges to **15 / 21** by replacing the failure watcher with a teardown
 | Current branch | `dag-simplification` — the D24 work, **not yet merged** |
 | `main` | `e2a4323` — the completion merge, local only |
 | Remote state | `origin/main` still at `90edfab`; **nothing since has been pushed** |
-| Screenshots | **Two Airflow captures are STALE** — they show the old 16-task graph with `watch_for_failure`. Re-capture before presenting; see `docs/screenshots/README.md` |
+| Screenshots | **All four are STALE.** The Airflow pair shows the old 16-task graph with `watch_for_failure` (D24); the Streamlit pair shows the old two-page dashboard (D25). Re-capture all four before presenting — `docs/screenshots/README.md` has the exact URLs and what to frame |
 | Deck | `build_deck.ps1` is updated for D24 and now uses all four screenshots. **Needs a rebuild** once the new captures exist (PowerPoint must be closed) |
 
 ### Working conventions the user expects
@@ -89,8 +89,9 @@ defaults. Source CSVs are **not** in git — `data/README.md` says where to get 
 
 ### What remains — the actual to-do list
 
-1. **Re-capture the two Airflow screenshots.** The committed ones show the old
-   16-task graph and are now wrong. Fresh green runs already exist to capture:
+1. **Re-capture all four screenshots** (see `docs/screenshots/README.md`).
+   The two Streamlit ones need the rebuilt single page; the two Airflow ones
+   show the old 16-task graph. Fresh green runs already exist to capture:
    `teardown_historical_20260812` (success, 134s) and
    `teardown_incremental_20260812` (success, 22s). Worth adding a third from
    `failure_proof_v2_20260812` — a **failed** run with `cleanup_staging` green,

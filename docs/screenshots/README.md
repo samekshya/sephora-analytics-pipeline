@@ -28,8 +28,23 @@ documents link to them by name.
 > Start Airflow first if it is down:
 > `docker compose -f docker-compose-airflow.yml up -d`
 >
-> The two Streamlit captures are **still accurate** — the dashboard and the data
-> behind it are unchanged (1,093,371 rows, watermark 2023-03-21).
+> **The two Streamlit captures are stale as well.** The dashboard was rebuilt as
+> a single Sephora-themed page (D25) — the old images show two pages, five
+> sidebar controls, and bar charts that were replaced because a truncated axis
+> under bars misleads. Recapture by scrolling the one page:
+>
+> | Save as | Capture |
+> |---|---|
+> | `streamlit_overview.png` | Top of the page — KPI card, BQ5 volume bars and the rating trend |
+> | `streamlit_analysis.png` | Further down — the price line pair and the hype scatter |
+>
+> ```powershell
+> py -m streamlit run dashboard/app.py     # http://localhost:8501
+> ```
+>
+> The filenames are unchanged so `build_deck.ps1` needs no edit; only what they
+> show changes. The underlying data is the same (1,093,371 rows, watermark
+> 2023-03-21).
 
 **A third Airflow capture is now available and worth taking**: run
 `failure_proof_v2_20260812` is a genuinely **FAILED** run showing three tasks
