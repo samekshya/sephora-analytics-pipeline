@@ -17,6 +17,7 @@ Run:
     py -m streamlit run dashboard/app.py
 """
 
+import math
 import os
 
 import pandas as pd
@@ -45,6 +46,20 @@ DW_CONFIG = dict(
   dbname=os.getenv("DW_DB_NAME"),
   user=os.getenv("DW_DB_USER"),
   password=os.getenv("DW_DB_PASSWORD"),
+)
+
+# Read-only, and used by exactly one thing: the row-accounting table in the data
+# quality panel, which has to span both databases to show that the warehouse
+# lost nothing between staging and the fact table. Every analytical number on
+# this dashboard still comes from dw and only dw. The panel degrades to its
+# warehouse half if this database is unreachable rather than taking the page
+# down with it.
+OLTP_CONFIG = dict(
+  host=os.getenv("OLTP_DB_HOST"),
+  port=os.getenv("OLTP_DB_PORT"),
+  dbname=os.getenv("OLTP_DB_NAME"),
+  user=os.getenv("OLTP_DB_USER"),
+  password=os.getenv("OLTP_DB_PASSWORD"),
 )
 
 # Colour-blind safe. The rating scale is sequential (more is better) and the
@@ -86,8 +101,356 @@ def q(sql: str, params: tuple = None) -> pd.DataFrame:
     raise
 
 
+@st.cache_data(ttl=300)
+def q_oltp(sql: str, params: tuple = None) -> pd.DataFrame:
+  """Same as q(), against the OLTP database, but returns None instead of raising.
+
+  The data quality panel is the only caller. A dashboard that goes blank
+  because a database it does not otherwise need is down would be a worse
+  outcome than a panel that says so.
+  """
+  try:
+    conn = psycopg2.connect(**OLTP_CONFIG)
+  except psycopg2.Error:
+    return None
+  try:
+    return pd.read_sql_query(sql, conn, params=params)
+  except psycopg2.Error:
+    return None
+  finally:
+    conn.close()
+
+
 def kpi_row():
   return q("SELECT * FROM dw.vw_kpi_summary").iloc[0]
+
+
+# --------------------------------------------------------------------------
+# Live warehouse status
+# --------------------------------------------------------------------------
+
+def live_status_strip(k):
+  """Show the warehouse watermark and row count, with a delta across refreshes.
+
+  Reads the SAME vw_kpi_summary row the KPI metrics above it use — deliberately
+  not a second `SELECT max(submission_date) FROM dw.fact_reviews`, which would be
+  a query path that could disagree with the view under caching.
+
+  The delta is the point of the demo: load `historical` mode, trigger the
+  incremental DAG, click Refresh, and the count visibly jumps. The baseline is
+  frozen by the Refresh button (see sidebar_filters), NOT updated on every
+  render — otherwise moving any slider would silently reset the comparison and
+  the jump would never be visible.
+  """
+  current = int(k["total_reviews"])
+  baseline = st.session_state.get("reviews_baseline")
+
+  # Recorded for the Refresh button to pick up on the NEXT rerun. Session state
+  # survives reruns, so at click time this still holds what was last displayed.
+  st.session_state["reviews_current"] = current
+
+  delta = None
+  if baseline is not None and current != baseline:
+    delta = f"{current - baseline:+,} since last refresh"
+
+  with st.container(border=True):
+    c1, c2, c3 = st.columns([1, 1, 2])
+    c1.metric("Warehouse watermark", str(k["latest_review"]))
+    c2.metric("Rows in fact_reviews", f"{current:,}", delta=delta)
+    with c3:
+      st.markdown("**Live connection — not an export**")
+      st.caption(
+        "Run the Airflow DAG in incremental mode, then click **Refresh data** "
+        "in the sidebar — this number moves live. The watermark is "
+        "`max(submission_date)`, which is also what the pipeline reads to decide "
+        "where the next incremental load starts."
+      )
+
+
+def data_quality_panel():
+  """Row accounting and integrity, re-derived from the databases at render time.
+
+  The pipeline's rule is that every row entering a stage must leave it either
+  transformed or dropped for a NAMED reason (etl/reconcile.py), and that an
+  unexplained gap raises rather than logging. That guarantee has always been
+  provable in the logs and invisible on the dashboard. This makes it visible.
+
+  Nothing here is stored: reconcile.py logs its counts, it does not persist
+  them, so every figure below is recomputed against the live databases instead
+  of read out of a table that could itself be stale. The one number that cannot
+  be recomputed is called out as such rather than quietly presented as live.
+  """
+  with st.expander("Data quality & what we dropped (and why)"):
+
+    # ---- row accounting, source through warehouse ----------------------
+    st.markdown("**Row accounting — every stage, queried now**")
+
+    fact = q("""
+      SELECT count(*) AS n, max(submission_date) AS watermark
+      FROM dw.fact_reviews
+    """).iloc[0]
+    fact_rows = int(fact["n"])
+
+    # after_watermark is what separates "held back" from "lost". During the
+    # historical baseline the warehouse is deliberately ~49.5k rows behind
+    # staging (D8) — reporting that as a shortfall would be the panel lying at
+    # exactly the moment it is on screen during the demo.
+    oltp = q_oltp("""
+      SELECT (SELECT count(*) FROM raw.reviews)    AS raw_reviews,
+             (SELECT count(*) FROM "3nf".review)   AS nf3_review,
+             (SELECT count(*) FROM staging.review) AS staging_review,
+             (SELECT count(*) FROM staging.review
+               WHERE submission_date > %s)         AS after_watermark
+    """, (fact["watermark"],))
+
+    if oltp is None:
+      st.warning(
+        f"`{OLTP_CONFIG['dbname']}` is unreachable, so the OLTP half of this "
+        f"table cannot be shown. The warehouse figures below are unaffected."
+      )
+      stages = pd.DataFrame([
+        {"Stage": "dw.fact_reviews", "Rows": fact_rows, "Change": "—",
+         "What happens here": "One row per review. The grain of the star schema."},
+      ])
+    else:
+      r = oltp.iloc[0]
+      chain = [
+        ("raw.reviews", int(r["raw_reviews"]),
+         "1:1 mirror of the cleaned CSVs, loaded by COPY. No transformation."),
+        ('3nf.review', int(r["nf3_review"]),
+         "Normalised across 9 tables, every foreign key enforced."),
+        ("staging.review", int(r["staging_review"]),
+         "Review text left behind (D6); review_length precomputed."),
+        ("dw.fact_reviews", fact_rows,
+         "One row per review. The grain of the star schema."),
+      ]
+      stages = pd.DataFrame([
+        {"Stage": name, "Rows": rows,
+         "Change": "—" if i == 0 else f"{rows - chain[i - 1][1]:+,}",
+         "What happens here": note}
+        for i, (name, rows, note) in enumerate(chain)
+      ])
+
+    st.dataframe(stages, hide_index=True, use_container_width=True,
+                 column_config={"Rows": st.column_config.NumberColumn(format="%d")})
+
+    # ---- drops by reason ------------------------------------------------
+    st.markdown("**Drops by reason**")
+
+    reasons = q("""
+      SELECT
+        count(*) FILTER (WHERE p.product_key IS NULL)            AS unresolved_product,
+        count(*) FILTER (WHERE c.customer_key IS NULL)           AS unresolved_customer,
+        count(*) FILTER (WHERE rp.reviewer_profile_key IS NULL)  AS unresolved_reviewer_profile,
+        count(*) FILTER (WHERE d.date_key IS NULL)               AS out_of_range_date
+      FROM dw.fact_reviews f
+      LEFT JOIN dw.dim_product          p  ON p.product_key = f.product_key
+      LEFT JOIN dw.dim_customer         c  ON c.customer_key = f.customer_key
+      LEFT JOIN dw.dim_reviewer_profile rp ON rp.reviewer_profile_key = f.reviewer_profile_key
+      LEFT JOIN dw.dim_date             d  ON d.date_key = f.date_key
+    """).iloc[0]
+
+    gap = held_back = None
+    if oltp is not None:
+      gap = int(oltp.iloc[0]["staging_review"]) - fact_rows
+      held_back = int(oltp.iloc[0]["after_watermark"])
+
+    st.dataframe(
+      pd.DataFrame([
+        {"Reason": "unresolved_product",
+         "Rows dropped": int(reasons["unresolved_product"]),
+         "Meaning": "review pointed at a product_id absent from dim_product"},
+        {"Reason": "unresolved_customer",
+         "Rows dropped": int(reasons["unresolved_customer"]),
+         "Meaning": "author_id absent from dim_customer"},
+        {"Reason": "unresolved_reviewer_profile",
+         "Rows dropped": int(reasons["unresolved_reviewer_profile"]),
+         "Meaning": "the four skin/eye/hair attributes matched no junk-dimension row"},
+        {"Reason": "out_of_range_date",
+         "Rows dropped": int(reasons["out_of_range_date"]),
+         "Meaning": "submission_date fell outside the generated dim_date range"},
+      ]),
+      hide_index=True, use_container_width=True)
+
+    preamble = ("These are the four named reasons `etl/transform.py` may drop "
+                "a fact row for. ")
+    d19 = ("Had `staging.review` and `dw.fact_reviews` disagreed by even one "
+           "row that no reason accounted for, `reconcile.py` would have raised "
+           "`ReconciliationError` and failed the run rather than loading a "
+           "warehouse that looks complete and isn't (D19).")
+
+    if gap is None:
+      st.caption(
+        preamble +
+        "The counts above re-run each check against the loaded warehouse: a "
+        "non-zero would mean a row reached the fact table without a resolvable "
+        "key. " + d19
+      )
+    elif gap == 0:
+      st.caption(
+        preamble +
+        f"The total is not inferred from them — it is measured: "
+        f"`staging.review` minus `dw.fact_reviews` is **{gap:,}**, so nothing "
+        f"was dropped for any reason, named or otherwise. " + d19
+      )
+    elif gap == held_back:
+      # The historical-baseline state. Not loss, and the panel says which.
+      st.caption(
+        preamble +
+        f"The warehouse is currently **{gap:,} rows behind** `staging.review` "
+        f"— and all {held_back:,} of them are dated after the watermark "
+        f"({fact['watermark']}). They were **not dropped**: this is a "
+        f"`historical` load, which deliberately holds later reviews back so an "
+        f"incremental run has real data to pick up (D8). Run the DAG in "
+        f"`incremental` mode and this gap closes to zero. " + d19
+      )
+    else:
+      unexplained = gap - held_back
+      st.error(
+        f"`staging.review` is **{gap:,} rows** ahead of `dw.fact_reviews`, but "
+        f"only {held_back:,} of those are after the watermark. "
+        f"**{unexplained:,} rows are unaccounted for.** That is the condition "
+        f"`reconcile.py` exists to prevent — treat this warehouse as incomplete "
+        f"until it is explained."
+      )
+
+    # ---- kept, not dropped ----------------------------------------------
+    st.markdown("**Kept, not dropped** — missing values this pipeline refuses "
+                "to invent")
+
+    kept = q("""
+      SELECT
+        count(*) FILTER (WHERE f.total_feedback_count = 0) AS no_feedback,
+        count(*) FILTER (WHERE f.review_length IS NULL)    AS no_length,
+        count(*) FILTER (WHERE f.is_recommended IS NULL)   AS no_recommend,
+        count(*) FILTER (WHERE rp.skin_tone  = 'Unknown')  AS unknown_skin_tone,
+        count(*) FILTER (WHERE rp.skin_type  = 'Unknown')  AS unknown_skin_type,
+        count(*) FILTER (WHERE rp.eye_color  = 'Unknown')  AS unknown_eye_color,
+        count(*) FILTER (WHERE rp.hair_color = 'Unknown')  AS unknown_hair_color
+      FROM dw.fact_reviews f
+      JOIN dw.dim_reviewer_profile rp
+        ON rp.reviewer_profile_key = f.reviewer_profile_key
+    """).iloc[0]
+
+    def _pct(n):
+      return f"{100.0 * int(n) / fact_rows:.1f}%" if fact_rows else "—"
+
+    st.dataframe(
+      pd.DataFrame([
+        {"Value": "helpfulness (no votes cast)", "Rows": int(kept["no_feedback"]),
+         "Share": _pct(kept["no_feedback"]),
+         "Treatment": "Left NULL, never imputed to 0. Undefined, not missing — "
+                      "helpfulness averages filter these out (D5)"},
+        {"Value": "is_recommended not answered", "Rows": int(kept["no_recommend"]),
+         "Share": _pct(kept["no_recommend"]),
+         "Treatment": "Left NULL. The recommend % is the share among those who "
+                      "answered, not of all reviews"},
+        {"Value": "review_length unrecorded", "Rows": int(kept["no_length"]),
+         "Share": _pct(kept["no_length"]),
+         "Treatment": "Own bucket in vw_rating_by_review_length so the view "
+                      "still reconciles"},
+        {"Value": "skin_tone = Unknown", "Rows": int(kept["unknown_skin_tone"]),
+         "Share": _pct(kept["unknown_skin_tone"]),
+         "Treatment": "Kept as a category. 'Declined to say' is a real answer"},
+        {"Value": "skin_type = Unknown", "Rows": int(kept["unknown_skin_type"]),
+         "Share": _pct(kept["unknown_skin_type"]), "Treatment": "As above"},
+        {"Value": "eye_color = Unknown", "Rows": int(kept["unknown_eye_color"]),
+         "Share": _pct(kept["unknown_eye_color"]), "Treatment": "As above"},
+        {"Value": "hair_color = Unknown", "Rows": int(kept["unknown_hair_color"]),
+         "Share": _pct(kept["unknown_hair_color"]), "Treatment": "As above"},
+      ]),
+      hide_index=True, use_container_width=True)
+
+    st.caption(
+      "None of these are dropped and none are filled in. Imputing a skin tone "
+      "would have made the BQ4 charts look better sourced than they are; "
+      "imputing helpfulness to 0 would have dragged the average down with "
+      "reviews nobody ever voted on."
+    )
+
+    # ---- integrity assertions -------------------------------------------
+    st.markdown("**Integrity, re-asserted just now**")
+
+    dupes = int(q("""
+      SELECT count(*) AS n FROM (
+        SELECT source_row_id, product_id FROM dw.fact_reviews
+        GROUP BY 1, 2 HAVING count(*) > 1) d
+    """)["n"].iloc[0])
+    orphans = int(sum(int(reasons[k]) for k in reasons.index))
+
+    # The same UNION as the reconciliation block of dashboard_checks.sql, run
+    # from the app. Counted rather than hardcoded: a "9 of 9" typed into the
+    # page would keep claiming 9 after someone added a tenth view.
+    recon = q("""
+      SELECT 'vw_kpi_summary'             AS view_name, total_reviews     AS reviews FROM dw.vw_kpi_summary
+      UNION ALL SELECT 'vw_rating_by_brand',        sum(review_count) FROM dw.vw_rating_by_brand
+      UNION ALL SELECT 'vw_rating_by_category',     sum(review_count) FROM dw.vw_rating_by_category
+      UNION ALL SELECT 'vw_rating_by_price_band',   sum(review_count) FROM dw.vw_rating_by_price_band
+      UNION ALL SELECT 'vw_review_trend_monthly',   sum(review_count) FROM dw.vw_review_trend_monthly
+      UNION ALL SELECT 'vw_review_volume_by_month', sum(review_count) FROM dw.vw_review_volume_by_month
+      UNION ALL SELECT 'vw_rating_by_skin_tone',    sum(review_count) FROM dw.vw_rating_by_skin_tone
+      UNION ALL SELECT 'vw_rating_by_review_length', sum(review_count) FROM dw.vw_rating_by_review_length
+    """)
+    matching = int((recon["reviews"] == fact_rows).sum())
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Orphan fact rows", f"{orphans:,}",
+              help="Fact rows whose product / customer / reviewer profile / "
+                   "date key does not resolve. Enforced by foreign keys and "
+                   "checked again here.")
+    c2.metric("Duplicate idempotency keys", f"{dupes:,}",
+              help="UNIQUE(source_row_id, product_id) is what makes re-running "
+                   "the DAG safe (D13). Re-running a load inserts 0 rows "
+                   "rather than doubling the table.")
+    c3.metric("Views reconciling to fact_reviews",
+              f"{matching} of {len(recon)}",
+              help="Each full-population view aggregates the same fact rows a "
+                   "different way, so summing it back up must return the same "
+                   "total. A shortfall is the classic fan-out join bug, which "
+                   "is invisible in any single chart. Same UNION as "
+                   "sql/validation/dashboard_checks.sql, run just now.")
+
+    st.caption(
+      "**One number on this panel is not live.** `clean.py` removed **1,040** "
+      "duplicate reviews on (author_id, product_id, submission_time) before "
+      "anything reached Postgres — 1,094,411 rows in the source CSVs became "
+      "1,093,371 — so neither database can be queried for it. It is the only "
+      "row loss in the whole chain, it was deliberate (D4), and it is stated "
+      "here rather than left out because the point of this panel is what "
+      "happened to every row, not only the parts that are convenient to query."
+    )
+
+
+# --------------------------------------------------------------------------
+# Presentation
+# --------------------------------------------------------------------------
+
+# One line, plain language, no jargon. Someone who has never seen this project
+# should be able to read the top of the page and know what question is being
+# answered before they look at a single chart.
+STRAPLINE = (
+  "**1.09 million Sephora skincare reviews — what people actually rate well, "
+  "as opposed to what they merely want.**"
+)
+
+
+def page_header(title: str, intro: str):
+  """Title block used by both pages, so they open the same way."""
+  st.title(title)
+  st.markdown(STRAPLINE)
+  st.caption(intro)
+  st.divider()
+
+
+def section(heading: str, takeaway: str):
+  """A section heading and the one line a reader should leave it with.
+
+  Every section gets the same shape - heading, then what it is for - so the
+  page reads consistently instead of some questions being introduced and
+  others appearing as a bare chart.
+  """
+  st.subheader(heading)
+  st.markdown(f"*{takeaway}*")
 
 
 # --------------------------------------------------------------------------
@@ -139,12 +502,33 @@ def sidebar_filters():
 
   st.sidebar.divider()
   if st.sidebar.button("Refresh data", use_container_width=True):
+    # Freeze whatever is currently on screen as the comparison point BEFORE
+    # clearing the cache, so the status strip can show how far the warehouse
+    # moved while the DAG was running.
+    st.session_state["reviews_baseline"] = st.session_state.get("reviews_current")
     st.cache_data.clear()
     st.rerun()
 
   st.sidebar.caption(
     "Click Refresh after running the Airflow DAG to see new rows appear."
   )
+
+  st.sidebar.divider()
+  with st.sidebar.expander("How to read this"):
+    st.markdown(
+      "- **Truncated y-axes are deliberate and always labelled.** Most effects "
+      "in this data are a tenth of a star or less. A zero-based axis would "
+      "render them as identical bars and hide the finding; the caption under "
+      "every truncated chart says the spread it is showing.\n"
+      "- **Review floors matter more than they look.** Averages over small "
+      "groups are noise. Where a floor applies there is a control for it, so "
+      "you can watch the noise drop out instead of taking the floor on trust.\n"
+      "- **`Unknown` is a category, not a gap.** It means the reviewer declined "
+      "to answer. Filtering it out would overstate how much this data knows.\n"
+      "- **Every number is queried live from `sephora_dw`** and reproducible "
+      "with `sql/validation/dashboard_checks.sql`. If they disagree, this "
+      "dashboard is wrong."
+    )
 
   return selected_categories, date_range, min_reviews
 
@@ -154,7 +538,12 @@ def sidebar_filters():
 # --------------------------------------------------------------------------
 
 def page_overview(categories, date_range, min_reviews):
-  st.title("Sephora Skincare Reviews — Overview")
+  page_header(
+    "Sephora Skincare Reviews — Overview",
+    "Where the ratings sit overall, how they have moved over fifteen years, and "
+    "which brands and categories sit at each end. Deep dive has the harder "
+    "questions: hype, price and who is doing the rating.",
+  )
 
   k = kpi_row()
   c1, c2, c3, c4, c5 = st.columns(5)
@@ -174,10 +563,15 @@ def page_overview(categories, date_range, min_reviews):
     f"that actually received a vote — it is undefined, not zero, elsewhere (D5)."
   )
 
+  live_status_strip(k)
+  data_quality_panel()
+
   st.divider()
 
   # ---- BQ5: volume over time -------------------------------------------
-  st.subheader("BQ5 — How do review volume and rating trend over time?")
+  section("BQ5 — How do review volume and rating trend over time?",
+          "Volume grew for twelve years then eased; the average rating dipped "
+          "in 2020 and recovered.")
 
   trend = q("""
     SELECT month_start, review_count, avg_rating, rolling_3m_avg_rating,
@@ -225,8 +619,9 @@ def page_overview(categories, date_range, min_reviews):
   st.divider()
 
   # ---- BQ1: brands ------------------------------------------------------
-  st.subheader("BQ1 — Which brands earn the highest ratings, and which "
-               "underperform?")
+  section("BQ1 — Which brands earn the highest ratings, and which underperform?",
+          "The gap between best and worst is over a full star — far larger than "
+          "any other effect on this dashboard.")
 
   brands = q("""
     SELECT brand_name, review_count, avg_rating, recommend_pct, avg_price_usd
@@ -263,8 +658,12 @@ def page_overview(categories, date_range, min_reviews):
       "single 5-star review — which is why the control exists."
     )
 
+  st.divider()
+
   # ---- BQ1b: categories -------------------------------------------------
-  st.subheader("BQ1b — Which categories rate best?")
+  section("BQ1b — Which categories rate best?",
+          "Cleansers lead, sunscreen trails, and the whole spread is under two "
+          "tenths of a star — category matters far less than brand.")
 
   cats = q("""
     SELECT secondary_category,
@@ -298,22 +697,50 @@ def page_overview(categories, date_range, min_reviews):
 # --------------------------------------------------------------------------
 
 def page_analysis(categories, date_range, min_reviews):
-  st.title("Deep dive — price, hype and skin profile")
+  page_header(
+    "Deep dive — price, hype and skin profile",
+    "Four questions where the intuitive answer turns out to be wrong. Every "
+    "slider on this page is a SQL parameter, not a filter applied after the "
+    "fact — moving one sends a new query to Postgres.",
+  )
 
   # ---- BQ2: hype vs reality --------------------------------------------
-  st.subheader("BQ2 — Hype vs reality: which products are loved more than "
-               "they deserve?")
+  section("BQ2 — Hype vs reality: which products are loved more than they "
+          "deserve?",
+          "Wanting a product and liking it are different signals, and the "
+          "products where they diverge most are the well-marketed ones.")
+
+  # Slider bounds come from the view itself, so even the range of the control
+  # traces back to the data rather than to a guessed constant. Deliberately NOT
+  # narrowed by the category filter: a slider whose end-points jump every time
+  # you tick a category is impossible to reason about mid-demo.
+  gap_bounds = q("""
+    SELECT min(hype_gap) AS lo, max(hype_gap) AS hi, count(*) AS products
+    FROM dw.vw_hype_vs_reality
+  """).iloc[0]
+  gap_lo = int(math.floor(float(gap_bounds["lo"]) * 100))
+  gap_hi = int(math.ceil(float(gap_bounds["hi"]) * 100))
+
+  min_gap = st.slider(
+    "Minimum hype gap (percentile points)",
+    min_value=gap_lo, max_value=gap_hi, value=gap_lo, step=1,
+    help="hype_gap is loves-percentile minus rating-percentile. 0 means a "
+         "product is loved exactly as much as its rating justifies; +40 means "
+         "it sits 40 percentile points higher on loves than on rating. Starts "
+         "at the minimum so the scatter opens on the full catalogue.",
+  )
 
   hype = q("""
     SELECT product_name, brand_name, secondary_category, price_usd,
            loves_count, review_count, avg_rating, hype_gap
     FROM dw.vw_hype_vs_reality
     WHERE secondary_category = ANY(%s)
+      AND hype_gap >= %s
     ORDER BY hype_gap DESC
-  """, (categories,))
+  """, (categories, min_gap / 100.0))
 
   if hype.empty:
-    st.info("No products match the selected categories.")
+    st.info("No products clear that hype gap in the selected categories.")
   else:
     fig = px.scatter(
       hype, x="loves_count", y="avg_rating",
@@ -330,8 +757,24 @@ def page_analysis(categories, date_range, min_reviews):
       "`loves_count` is recorded BEFORE purchase (a wishlist add); rating is "
       "recorded after. Red = far more loved than its rating justifies. Both "
       "signals are percentile-ranked in SQL so a cheap moisturizer and a $300 "
-      "serum are comparable. Minimum 50 reviews per product."
+      "serum are comparable. Minimum 50 reviews per product. "
+      f"**{len(hype):,} of {int(gap_bounds['products']):,}** products clear the "
+      f"current hype-gap threshold ({min_gap:+d} points) — drag the slider "
+      "right and the cloud thins to the worst offenders."
     )
+
+    # The sleeper-hit tail is queried separately and NOT filtered by the
+    # slider. It is the opposite end of the same distribution, so a
+    # "minimum hype gap" would empty it the moment the slider left its floor,
+    # which reads as a bug rather than as a filter doing its job.
+    sleepers = q("""
+      SELECT product_name, brand_name, loves_count, review_count,
+             avg_rating, hype_gap
+      FROM dw.vw_hype_vs_reality
+      WHERE secondary_category = ANY(%s)
+      ORDER BY hype_gap ASC
+      LIMIT 10
+    """, (categories,))
 
     left, right = st.columns(2)
     with left:
@@ -340,17 +783,18 @@ def page_analysis(categories, date_range, min_reviews):
         hype.head(10)[["product_name", "brand_name", "loves_count",
                        "review_count", "avg_rating", "hype_gap"]],
         hide_index=True, use_container_width=True)
+      st.caption("Filtered by the hype-gap slider above.")
     with right:
       st.markdown("**Sleeper hits** — better than their love count suggests")
-      st.dataframe(
-        hype.tail(10).iloc[::-1][["product_name", "brand_name", "loves_count",
-                                  "review_count", "avg_rating", "hype_gap"]],
-        hide_index=True, use_container_width=True)
+      st.dataframe(sleepers, hide_index=True, use_container_width=True)
+      st.caption("The opposite tail — not affected by the slider.")
 
   st.divider()
 
   # ---- BQ3: price vs rating --------------------------------------------
-  st.subheader("BQ3 — Does price predict satisfaction?")
+  section("BQ3 — Does price predict satisfaction?",
+          "Not linearly. Ratings peak at $50-100 and fall back above it — but "
+          "expensive products are rated far more consistently.")
 
   bands = q("""
     SELECT price_band, band_order, review_count, product_count,
@@ -387,14 +831,33 @@ def page_analysis(categories, date_range, min_reviews):
   )
 
   # ---- product-level scatter -------------------------------------------
+  price_bounds = q("""
+    SELECT min(price_usd) AS lo, max(price_usd) AS hi
+    FROM dw.vw_hype_vs_reality
+  """).iloc[0]
+  price_lo = int(math.floor(float(price_bounds["lo"])))
+  price_hi = int(math.ceil(float(price_bounds["hi"])))
+
+  price_range = st.slider(
+    "Price range (USD) — filters the product scatter below",
+    min_value=price_lo, max_value=price_hi,
+    value=(price_lo, price_hi), step=1, format="$%d",
+    help="Bounds the scatter only. The banded chart above is left whole on "
+         "purpose: it comes from vw_rating_by_price_band, whose bands are the "
+         "thing being compared.",
+  )
+
   scatter = q("""
     SELECT price_usd, avg_rating, review_count, product_name, brand_name,
            secondary_category
     FROM dw.vw_hype_vs_reality
     WHERE secondary_category = ANY(%s)
-  """, (categories,))
+      AND price_usd BETWEEN %s AND %s
+  """, (categories, price_range[0], price_range[1]))
 
-  if not scatter.empty:
+  if scatter.empty:
+    st.info("No products in that price range for the selected categories.")
+  else:
     fig = px.scatter(
       scatter, x="price_usd", y="avg_rating", size="review_count",
       color="secondary_category", hover_data=["product_name", "brand_name"],
@@ -406,14 +869,29 @@ def page_analysis(categories, date_range, min_reviews):
     st.caption(
       "The banded view above aggregates this cloud. At product level the "
       "relationship is weak — price explains very little of the variation in "
-      "satisfaction, which is itself the answer to BQ3."
+      "satisfaction, which is itself the answer to BQ3. "
+      f"Showing {len(scatter):,} products between ${price_range[0]} and "
+      f"${price_range[1]}; the OLS trend line is refitted to whatever the "
+      "slider selects, so narrowing the range genuinely changes the slope."
     )
 
   st.divider()
 
   # ---- BQ4: skin profile ------------------------------------------------
-  st.subheader("BQ4 — Do reviewers with different skin profiles rate "
-               "differently?")
+  section("BQ4 — Do reviewers with different skin profiles rate differently?",
+          "Slightly, and the honest answer is that the difference is too small "
+          "to act on — which is worth saying out loud.")
+
+  # Replaces a hardcoded HAVING >= 1000. The floor was always a judgement call;
+  # making it a parameter lets the audience watch the judgement being made -
+  # drop it to 0 and 'ebony' appears with 3 reviews and a wild average.
+  min_group_reviews = st.slider(
+    "Minimum reviews per skin group",
+    min_value=0, max_value=25000, value=1000, step=500,
+    help="Applied as HAVING sum(review_count) >= this, in SQL, to both charts. "
+         "A group of 3 reviews produces an average that swings a full star on "
+         "one more review — visible noise, not a finding.",
+  )
 
   left, right = st.columns(2)
 
@@ -425,13 +903,17 @@ def page_analysis(categories, date_range, min_reviews):
       FROM dw.vw_rating_by_skin_type
       WHERE secondary_category = ANY(%s)
       GROUP BY skin_type
+      HAVING sum(review_count) >= %s
       ORDER BY avg_rating DESC
-    """, (categories,))
+    """, (categories, int(min_group_reviews)))
 
-    if not skin_type.empty:
+    if skin_type.empty:
+      st.info(f"No skin type has {min_group_reviews:,} reviews. Lower the floor.")
+    else:
       fig = px.bar(skin_type, x="skin_type", y="avg_rating",
                    color="avg_rating", color_continuous_scale=SEQ,
-                   title="Average rating by skin type",
+                   title=f"Average rating by skin type "
+                         f"(min {min_group_reviews:,} reviews)",
                    labels={"skin_type": "", "avg_rating": "Avg rating"})
       fig.update_yaxes(range=[skin_type["avg_rating"].min() - 0.05,
                               skin_type["avg_rating"].max() + 0.05])
@@ -446,14 +928,17 @@ def page_analysis(categories, date_range, min_reviews):
       FROM dw.vw_rating_by_skin_tone
       WHERE secondary_category = ANY(%s)
       GROUP BY skin_tone
-      HAVING sum(review_count) >= 1000
+      HAVING sum(review_count) >= %s
       ORDER BY avg_rating DESC
-    """, (categories,))
+    """, (categories, int(min_group_reviews)))
 
-    if not skin_tone.empty:
+    if skin_tone.empty:
+      st.info(f"No skin tone has {min_group_reviews:,} reviews. Lower the floor.")
+    else:
       fig = px.bar(skin_tone, x="skin_tone", y="avg_rating",
                    color="avg_rating", color_continuous_scale=SEQ,
-                   title="Average rating by skin tone (min 1,000 reviews)",
+                   title=f"Average rating by skin tone "
+                         f"(min {min_group_reviews:,} reviews)",
                    labels={"skin_tone": "", "avg_rating": "Avg rating"})
       fig.update_yaxes(range=[skin_tone["avg_rating"].min() - 0.05,
                               skin_tone["avg_rating"].max() + 0.05])
@@ -466,8 +951,92 @@ def page_analysis(categories, date_range, min_reviews):
     "mis-tagged 13.69% of reviews — this exact chart would have been quietly "
     "wrong (D2). 'Unknown' is kept rather than filtered: it means the reviewer "
     "declined to say, which is a real answer. Note the truncated axes — the "
-    "spread is real but small (~0.04), a weak signal, not a headline."
+    "spread is real but small (~0.04), a weak signal, not a headline. "
+    f"At the current floor, {len(skin_type)} skin type(s) and "
+    f"{len(skin_tone)} skin tone(s) qualify; pull the floor to 0 and the two "
+    "smallest tone groups reappear with a handful of reviews between them, "
+    "which is what the floor is there to prevent."
   )
+
+  st.divider()
+
+  # ---- review length ----------------------------------------------------
+  section("Does review length say anything about the rating?",
+          "Not about the average — but short reviews are markedly more "
+          "polarised than long ones.")
+
+  length = q("""
+    SELECT length_bucket, bucket_order, review_count, avg_review_length,
+           avg_rating, recommend_pct, rating_stddev,
+           pct_1_star, pct_5_star, pct_extreme
+    FROM dw.vw_rating_by_review_length
+    ORDER BY bucket_order
+  """)
+
+  # The Unknown bucket (no recorded length) is kept in the view so it reconciles
+  # to the fact table, but it is not a LENGTH, so plotting it on an ordered
+  # length axis would be a category error. It stays visible in the table below.
+  plotted = length[length["length_bucket"] != "Unknown"]
+
+  left, right = st.columns(2)
+  with left:
+    fig = px.bar(plotted, x="length_bucket", y="avg_rating",
+                 color="avg_rating", color_continuous_scale=SEQ,
+                 title="Average rating by review length",
+                 labels={"length_bucket": "", "avg_rating": "Avg rating"})
+    # Truncated for the same reason as the price and skin charts: the spread is
+    # ~0.06 of a star. Stated in the caption rather than left to be noticed.
+    fig.update_yaxes(range=[plotted["avg_rating"].min() - 0.02,
+                            plotted["avg_rating"].max() + 0.02])
+    fig.update_layout(coloraxis_showscale=False)
+    st.plotly_chart(fig, use_container_width=True)
+
+  with right:
+    melted = plotted.melt(
+      id_vars="length_bucket", value_vars=["pct_1_star", "pct_5_star"],
+      var_name="share", value_name="pct")
+    fig = px.bar(melted, x="length_bucket", y="pct", color="share",
+                 barmode="group",
+                 title="Share of 1-star and 5-star reviews by length",
+                 labels={"length_bucket": "", "pct": "% of reviews",
+                         "share": ""})
+    st.plotly_chart(fig, use_container_width=True)
+
+  # Read off the view rather than written into the prose. The incremental load
+  # moves these by a hundredth of a point, and a caption that quotes a number
+  # the chart beside it no longer shows is worse than no caption.
+  shortest, longest = plotted.iloc[0], plotted.iloc[-1]
+  spread = float(plotted["avg_rating"].max() - plotted["avg_rating"].min())
+
+  st.caption(
+    "The common assumption is that unhappy customers write longer reviews. "
+    "**This data does not support it.** Average rating is essentially flat "
+    "across every length bucket — the left chart has a truncated y-axis and the "
+    f"whole spread is still only {spread:.3f} of a star, less than the price "
+    "effect. The right chart is where the signal is: going from the shortest "
+    "bucket to the longest, the share of 1-star reviews falls "
+    f"({shortest['pct_1_star']:.1f}% → {longest['pct_1_star']:.1f}%) **and** so "
+    f"does the share of 5-star reviews ({shortest['pct_5_star']:.1f}% → "
+    f"{longest['pct_5_star']:.1f}%). Short reviews are polarised; long reviews "
+    "are moderate. The two extremes shrink together, which is precisely why the "
+    "mean barely moves. Rating standard deviation falls across the same buckets "
+    f"({shortest['rating_stddev']:.4f} → {longest['rating_stddev']:.4f}) — the "
+    "same fact, stated a second way."
+  )
+
+  with st.expander("The numbers behind those two charts"):
+    st.dataframe(
+      length[["length_bucket", "review_count", "avg_review_length",
+              "avg_rating", "recommend_pct", "rating_stddev",
+              "pct_1_star", "pct_5_star", "pct_extreme"]],
+      hide_index=True, use_container_width=True)
+    st.caption(
+      f"All {int(length['review_count'].sum()):,} rows, including the "
+      f"{int(length.loc[length['length_bucket'] == 'Unknown', 'review_count'].iloc[0]):,} "
+      "with no recorded length — kept so `vw_rating_by_review_length` sums back "
+      "to `fact_reviews` exactly in `sql/validation/dashboard_checks.sql`, and "
+      "excluded from the charts above because 'Unknown' is not a length."
+    )
 
 
 # --------------------------------------------------------------------------
@@ -488,7 +1057,12 @@ def main():
 
   categories, date_range, min_reviews = sidebar_filters()
 
-  page = st.sidebar.radio("Page", ["Overview", "Deep dive"])
+  # Query-param default makes either page directly shareable (and keeps
+  # evidence captures reproducible) while the sidebar remains the normal
+  # navigation once the app is open.
+  requested_page = st.query_params.get("page", "").lower()
+  default_page = 1 if requested_page in {"deep", "deep-dive", "analysis"} else 0
+  page = st.sidebar.radio("Page", ["Overview", "Deep dive"], index=default_page)
   if page == "Overview":
     page_overview(categories, date_range, min_reviews)
   else:

@@ -32,6 +32,7 @@ WITH totals AS (
     UNION ALL SELECT 'vw_review_trend_monthly', sum(review_count) FROM dw.vw_review_trend_monthly
     UNION ALL SELECT 'vw_review_volume_by_month', sum(review_count) FROM dw.vw_review_volume_by_month
     UNION ALL SELECT 'vw_rating_by_skin_tone', sum(review_count) FROM dw.vw_rating_by_skin_tone
+    UNION ALL SELECT 'vw_rating_by_review_length', sum(review_count) FROM dw.vw_rating_by_review_length
 )
 SELECT
     source,
@@ -152,3 +153,16 @@ FROM dw.vw_review_volume_by_month GROUP BY year ORDER BY year;
 SELECT month_start, review_count, is_partial_month
 FROM dw.vw_review_volume_by_month
 ORDER BY month_start DESC LIMIT 3;
+
+\echo ''
+\echo '=== 14. Review length vs rating ==='
+-- Read the LAST three columns, not avg_rating. The mean is flat across every
+-- bucket (~0.06 of a star), so length looks unrelated to satisfaction until the
+-- tails are counted separately: pct_1_star and pct_5_star both fall as reviews
+-- get longer. Short reviews are polarised, long reviews are moderate, and the
+-- two effects cancel in the average. rating_stddev falling monotonically is the
+-- same fact stated a second way.
+SELECT length_bucket, review_count, avg_review_length, avg_rating,
+       recommend_pct, rating_stddev, pct_1_star, pct_5_star, pct_extreme
+FROM dw.vw_rating_by_review_length
+ORDER BY bucket_order;

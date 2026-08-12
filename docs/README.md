@@ -11,8 +11,8 @@ Read in order for the full story, or jump to what you need.
 | 05 | [ETL and incremental loading](05_etl_and_incremental_loading.md) | The three load modes, the watermark, reconciliation, the quality gate |
 | 06 | [Airflow runbook](06_airflow_runbook.md) | How to start it, trigger each mode, and read a failed run |
 | 07 | [Dashboard insights](07_dashboard_insights.md) | Every finding, with the number behind it |
-| 08 | [Testing evidence](08_testing_evidence.md) | What each of the 45 tests proves, and the known gaps |
-| 09 | [Decision log](09_decision_log.md) | 22 decisions, with the reasoning and what was ruled out |
+| 08 | [Testing evidence](08_testing_evidence.md) | What each of the 51 tests proves, and the known gaps |
+| 09 | [Decision log](09_decision_log.md) | 23 decisions, with the reasoning and what was ruled out |
 | 10 | [Production readiness checklist](10_production_readiness_checklist.md) | Self-audit, including the five deliberately unchecked items |
 | 11 | [Project walkthrough](11_project_walkthrough.md) | Narrative account of the whole build, start to finish |
 
@@ -24,6 +24,7 @@ Read in order for the full story, or jump to what you need.
 | [`../dashboard/README.md`](../dashboard/README.md) | What each visual shows and how to read it |
 | [`../dashboard/data_model.md`](../dashboard/data_model.md) | Which tables and views the dashboard reads |
 | [`../data/README.md`](../data/README.md) | Where to get the source CSVs and where to put them |
+| [`../presentation/README.md`](../presentation/README.md) | Eight-minute deck, PDF, timing guide, and rebuild command |
 | [`screenshots/`](screenshots/) | Presentation captures — filenames the other docs link to |
 | [`archive/`](archive/) | Superseded documents, kept rather than deleted |
 

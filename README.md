@@ -71,7 +71,7 @@ flowchart LR
     subgraph DW["sephora_dw — star schema"]
         DIMS[("5 dimensions")]
         FACT[("fact_reviews")]
-        VIEWS[("9 analytics views")]
+        VIEWS[("10 analytics views")]
     end
 
     BI["Streamlit dashboard"]
@@ -99,9 +99,9 @@ reads. The warehouse then denormalizes deliberately — that contrast is the poi
 | Star schema warehouse | Built, loaded, verified |
 | ETL package + `pipeline.py` | Complete — three modes, reconciliation, idempotency all verified |
 | Airflow staged DAG | Complete — 16 tasks, failure watcher, both modes green |
-| Analytics views | Complete — 9 views, all reconciling to `fact_reviews` |
+| Analytics views | Complete — 10 views, all full-population views reconciling to `fact_reviews` |
 | Streamlit dashboard | Complete — 2 pages, live, smoke-tested against the warehouse |
-| Tests | 45 passing + 11 DAG assertions verified in-container |
+| Tests | 51 passing + 11 DAG assertions verified in-container |
 | Documentation | Complete — [`docs/`](docs/README.md), 11 numbered documents |
 
 ## The data
@@ -238,15 +238,30 @@ Orchestrated two ways: `pipeline.py` for local runs, and
 
 ## Airflow DAG
 
-```
-create_staging_tables
-      ├──> extract_brand ──> load_brand ──> extract_product ──> load_product ─┐
-      ├──> extract_customer ──────> load_customer ────────────────────────────┤
-      ├──> extract_reviewer_profile ──> load_reviewer_profile ────────────────┤
-      ├──> load_date_dimension ───────────────────────────────────────────────┤
-      └──> extract_fact_to_staging ──> transform_fact ──> quality_fact ──> load_fact
-                                                                              │
-                                                                        cleanup_staging
+```mermaid
+flowchart LR
+    START[create staging tables]
+
+    subgraph DIMS[dimension branches]
+        EB[extract brand] --> LB[load brand] --> EP[extract product] --> LP[load product]
+        EC[extract customer] --> LC[load customer]
+        ER[extract reviewer profile] --> LR[load reviewer profile]
+        DD[load date dimension]
+    end
+
+    START --> EB
+    START --> EC
+    START --> ER
+    START --> DD
+    START --> EF[extract fact] --> TF[transform fact]
+    LP --> TF
+    LC --> TF
+    LR --> TF
+    DD --> TF
+
+    TF --> QF[quality gate] --> LF[load fact]
+    LF --> CLEAN[cleanup staging]
+    CLEAN -. "all 15 task states are direct upstream" .-> WATCH[watch for failure]
 ```
 
 Three dimension branches run in parallel; `product` waits on `brand` for the foreign key. The
@@ -257,6 +272,11 @@ Each dimension pair writes through a staging table scoped by `batch_id = run_id`
 row-level data crosses task boundaries via XCom — XCom is metadata storage, not a data channel.
 
 `cleanup_staging` uses `trigger_rule="all_done"`, so a failed run still clears its own rows.
+The watcher uses `one_failed`, receives **all 15 other tasks as direct
+upstreams**, and is the DAG's only leaf. The diagram collapses those 15 watcher
+edges into the dashed annotation so the execution path remains readable.
+
+![Verified incremental Airflow run](docs/screenshots/airflow_incremental_run.png)
 
 ## Run it
 
@@ -331,6 +351,19 @@ brand chart says how many of the 304 brands clear the current review floor.
 See [`dashboard/README.md`](dashboard/README.md) for what each visual shows and
 [`docs/07_dashboard_insights.md`](docs/07_dashboard_insights.md) for the findings.
 
+![Streamlit overview](docs/screenshots/streamlit_overview.png)
+
+The Deep dive can also be opened directly at
+<http://localhost:8501/?page=deep-dive> for a stable presentation link.
+
+## Presentation
+
+The completed eight-minute deck is available as an editable
+[`PowerPoint`](presentation/output/Sephora_Analytics_Pipeline.pptx) and a
+portable [`PDF`](presentation/output/Sephora_Analytics_Pipeline.pdf). See
+[`presentation/README.md`](presentation/README.md) for the timed slide sequence,
+speaker notes, and reproducible build command.
+
 ### The headline finding
 
 Price does **not** predict satisfaction linearly. It is an inverted U:
@@ -373,7 +406,7 @@ key.
 Dimensions: 304 brands · 8,494 products · 503,216 customers · **1,896** reviewer profiles ·
 5,379 dates.
 
-**Tests** — **45 passing**, plus 11 DAG structural assertions verified inside the Airflow
+**Tests** — **51 passing**, plus 11 DAG structural assertions verified inside the Airflow
 container. Fault injection is the core of it: the suite proves the quality gate *rejects* bad
 data, which matters more than proving it accepts good data — every pipeline run already
 demonstrates the latter. See [`docs/08_testing_evidence.md`](docs/08_testing_evidence.md) for

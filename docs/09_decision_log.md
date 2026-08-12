@@ -539,6 +539,55 @@ the dashboard and this file disagree, the dashboard is wrong.**
 
 ---
 
+## D23. Dashboard controls are query parameters, and the quality panel recomputes
+
+**Date**: 2026-08-08
+
+**Decision**: every interactive control on the dashboard binds its value into the SQL rather
+than filtering the returned DataFrame, and the data-quality panel derives every figure at
+render time instead of reading a stored summary.
+
+**Why — the controls**: a slider that filters a cached DataFrame and a slider that
+re-parameterises the query look *identical* on screen. They are not the same claim. The
+second demonstrates that the dashboard is a live query interface over the warehouse; the
+first demonstrates that pandas can subset a frame. So the three Deep-dive sliders feed
+`WHERE hype_gap >= %s`, `WHERE price_usd BETWEEN %s AND %s`, and
+`HAVING sum(review_count) >= %s` — the last replacing a hardcoded `HAVING >= 1000`, which
+was always a judgement call and is more honest as a control the viewer can move.
+
+Slider end-points are read from the views' own `min`/`max` rather than hardcoded, and are
+deliberately *not* narrowed by the category filter: a control whose range moves while you are
+using it cannot be reasoned about mid-demo.
+
+Each control is asserted individually in `tests/integration/test_dashboard_smoke.py` by moving
+it and requiring the corresponding caption to change. Verified non-vacuous: reverting the
+skin-group floor to its hardcoded `1000` makes `test_skin_group_floor_is_live` fail while the
+other two still pass.
+
+**Why — the panel recomputes**: `etl/reconcile.py` logs its counts, it does not persist them,
+so there is no reconciliation table to read. Rather than hardcode the numbers from a past run,
+the panel re-derives them: row accounting across `raw.reviews` → `3nf.review` →
+`staging.review` → `dw.fact_reviews`, the four named drop reasons re-checked against the
+loaded warehouse, and the reconciling-view count computed by running the same `UNION` as
+`dashboard_checks.sql`. That last one is *counted*, not typed, so it cannot keep claiming 8
+after someone adds a ninth view.
+
+**The case that made this worth getting right**: the panel must distinguish **held back** from
+**lost**. At the historical baseline the warehouse is legitimately 49,503 rows behind
+`staging.review`, because a `historical` load holds 2023 back so the incremental has real data
+to pick up (D8). A panel that reported that as a shortfall — or worse, printed "nothing was
+dropped" beside a `-49,503` — would be wrong at exactly the moment it is on screen during the
+demo. It now compares the gap against the count of staging rows *after* the watermark and says
+which of the three states it is in, escalating to an `st.error` only when rows are genuinely
+unaccounted for.
+
+One number in the panel is labelled **not live**: the 1,040 duplicates `clean.py` removed
+before anything reached Postgres (D4). Neither database can be queried for it. It is stated
+and labelled rather than omitted, because the panel's claim is about what happened to every
+row — not only the parts that are convenient to query.
+
+---
+
 ## Format for future entries
 
 New decisions follow the same shape: **Decision** (what was chosen), **Why** (the reasoning,

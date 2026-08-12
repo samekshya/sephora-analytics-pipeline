@@ -6,6 +6,112 @@ Never let it drift from what has actually been built and verified.
 
 ---
 
+## 0. Project checkpoint — read this first
+
+Written 2026-08-12 so project work can resume from verified facts rather than
+assumptions. Sections 1–9 describe the *design*; this section describes *where the work
+actually stands right now*.
+
+### The one-line summary
+
+**Stages 1–11 of the pipeline are built, run, and verified.** The warehouse holds
+1,093,371 fact rows, Airflow runs both modes green, the dashboard works, 51 tests
+pass, and the screenshots plus eight-minute deck are complete. What remains is
+final validation and merging the current dashboard branch — not pipeline work.
+
+### Where the code is right now
+
+| | |
+|---|---|
+| Current branch | `dashboard-polish` — dashboard controls, review-length analysis, live quality panel, and shared page styling are complete |
+| `main` | `90edfab` "Merge phase 9: audit remediation, dashboard and documentation" — matches `origin/main` |
+| Completion pass | **In progress** — documentation, live DAG proof, screenshots, and deck complete; final validation and merge remain |
+
+The completed dashboard work is the source of **D23** and the 10th analytics
+view. It has already passed the host integration suite; this completion pass
+adds fresh runtime evidence and presentation assets without changing the
+pipeline's established behavior.
+
+### Working conventions the user expects
+
+- **Git**: work on a phase branch, merge to `main` when the phase is done.
+  Match the existing log's voice: imperative sentences that say what changed and why
+  ("Make the hype gap, price range and skin-group floor real query parameters").
+- **This file**: update the Status table and Measured numbers at the end of every
+  stage. Never write an estimated number here — measure it or leave it blank.
+- **Code style**: section 9. `etl/` is 2-space indented, top-level scripts are 4.
+- **Database**: **port 5434 only.** 5432 and 5433 on this machine belong to
+  unrelated stacks, one of which is a *different Sephora project*. Pointing at
+  the wrong port will appear to work and produce wrong numbers.
+
+### Repo map
+
+```
+explore.py          stage 1 — profiling, 14 checks, prints a report (only script allowed print())
+clean.py            stage 2 — data/raw/*.csv → data/processed/*.csv, drops rows never columns (D14)
+ingest.py           stage 3 — COPY data/processed → raw schema, asserts counts against clean.py
+pipeline.py         local runner: --mode full | historical | incremental
+etl/                extract · transform · reconcile · quality · load · staging  (2-space indent)
+dags/               sephora_dw_pipeline_staged.py — the 16-task DAG
+sql/init/           create both databases
+sql/oltp/           01_raw_schema.sql + 15 timestamped migrations (raw → 3nf → staging)
+sql/datawarehouse/  7 numbered migrations — 5 dims + fact_reviews
+sql/analytics/views/  10 views, the dashboard's only read surface
+sql/validation/     dashboard_checks.sql — read-only assertions, changes nothing (D22)
+dashboard/app.py    Streamlit, 2 pages, ~1,075 lines, live Postgres connection
+tests/              unit/ + integration/ + test_dag_structure.py + verify_dag_in_container.py
+docs/               01–11 plus README index; screenshots/ is empty and waiting
+setup.ps1           11 resumable steps, end to end from empty Docker to loaded warehouse
+reference/          the course's reference project — the format constraint, see section 1
+```
+
+Total migrations: **22** (15 OLTP + 7 DW), all re-appliable against a loaded database.
+
+### Getting a working environment
+
+```powershell
+# 1. Databases (compose project leapfrog-sephora, host port 5434)
+docker compose up -d
+
+# 2. Full setup, 11 resumable steps — safe to re-run
+.\setup.ps1
+
+# 3. Tests
+py -m pytest              # 51 collected; 1 skips locally (airflow not in host venv)
+
+# 4. Dashboard
+py -m streamlit run dashboard/app.py        # http://localhost:8501
+
+# 5. Airflow
+docker compose -f docker-compose-airflow.yml up -d   # http://localhost:8081
+```
+
+`.env` already exists locally and is gitignored; `.env.example` carries working
+defaults. Source CSVs are **not** in git — `data/README.md` says where to get them.
+
+### What remains — the actual to-do list
+
+Ordered by what the capstone is graded on. Nothing here is blocked.
+
+1. **Final validation and merge** — re-run the full host suite, DAG assertions,
+   warehouse reconciliation, and dashboard smoke tests, then merge
+   `dashboard-polish` into `main` and push both refs.
+
+### Things that look like bugs and are not
+
+- **The warehouse being 49,503 rows behind staging** at the historical baseline
+  is correct — those are the 2023 rows held back for the incremental demo (D8).
+  The dashboard's data-quality panel distinguishes "held back" from "lost" on
+  purpose (D23). Do not "fix" it.
+- **`--mode historical` does not reset a full warehouse.** There is no truncate
+  anywhere and every load is `ON CONFLICT DO NOTHING`. To reset for a demo:
+  `DELETE FROM dw.fact_reviews WHERE submission_date >= '2023-01-01'`.
+- **`watch_for_failure` showing as skipped (pale)** in a green Airflow run is the
+  intended state — it is a `one_failed` watcher (D20).
+- **`helpfulness` nulls** are undefined, not missing (D5). Do not impute them.
+
+---
+
 ## 1. Project goals (from initial planning)
 
 Capstone project for a data engineering course. End-to-end pipeline over Sephora
@@ -85,7 +191,7 @@ sephora_oltp ── raw schema       1:1 CSV mirror, loaded by ingest.py (COPY)
    │            3nf schema       9 normalized tables, FKs enforced
    │            staging schema   trimmed, analytics-ready subset
    ▼  etl/ package: extract → transform → reconcile → quality gate → load
-sephora_dw     dw schema — 5 dimensions + fact_reviews + 9 analytics views
+sephora_dw     dw schema — 5 dimensions + fact_reviews + 10 analytics views
    ▼
 Streamlit dashboard (2 pages, live connection)
 ```
@@ -143,13 +249,18 @@ Indexes on all four fact FK columns. **No `brand_key` on the fact table** (D11).
 | 4. DW star schema migrations | **Done** — 7 migrations, 5 dims + fact_reviews |
 | 5. ETL package + `pipeline.py` | **Done** — three named load modes (D17), row reconciliation (D19), severity-aware quality gate (D21) |
 | 6. Airflow staged DAG | **Done** — 16 tasks incl. the failure watcher (D20); historical and incremental runs both green |
-| 7. Analytics views | **Done** — 9 views (one uses window functions), split from validation SQL (D22) |
-| 8. Streamlit dashboard | **Done** — 2 pages, live connection, smoke-tested against the warehouse (D18) |
-| 9. Tests | **Done** — 45 pytest passing + 11 DAG assertions verified in-container |
-| 10. Documentation | **Done** — `docs/01`–`11` + index; 22 decisions logged |
+| 7. Analytics views | **Done** — 10 views (one uses window functions), split from validation SQL (D22) |
+| 8. Streamlit dashboard | **Done** — 2 pages, live connection, 3 slider-driven query params, live status strip and data-quality panel (D18, D23) |
+| 9. Tests | **Done** — 51 pytest passing + 11 DAG assertions verified in-container |
+| 10. Documentation | **Done** — `docs/01`–`11` + index; 23 decisions logged |
 | 11. Reproducibility | **Done** — `setup.ps1`, 11 resumable steps; `.env.example` with working defaults |
-| — Presentation deck | **Not started** — material ready, see `docs/README.md` |
-| — Screenshots | **Not captured** — filenames listed in `docs/screenshots/README.md` |
+| — Dashboard polish | **Done, awaiting merge** — status strip, 3 query-param controls, shareable Deep-dive URL, `vw_rating_by_review_length`, data-quality panel, shared page shape. Source of D23 |
+| — Presentation deck | **Done** — 8 timed slides; editable PowerPoint, PDF, embedded notes, and reproducible builder under `presentation/` |
+| — Screenshots | **Done** — 4 required live captures under `docs/screenshots/`, all visually inspected |
+
+Stages 1–11 are complete and verified against real runs; the numbers in section 7
+come from those runs, not from estimates. The only outstanding work is the last
+three rows. See **section 0** for the ordered to-do list.
 
 ---
 
@@ -207,21 +318,23 @@ Fill in from actual runs. Never estimate here — if it isn't measured, leave it
 | **raw → 3nf → staging** | 0 row gap on both products and reviews; all 6 integrity checks return 0 |
 | **3NF row counts** | brand 304 · category 174 · product 8,494 · author 503,216 · review 1,093,371 · skin_tone 13 · skin_type 4 · eye_color 5 · hair_color 7 |
 | **Staging row counts** | product 8,494 · review 1,093,371 (date range 2008-08-28 → 2023-03-21) |
-| raw → 3nf → staging reconciliation | _pending_ |
+| **raw → 3nf → staging reconciliation** | Products 8,494 → 8,494 → 8,494; reviews 1,093,371 → 1,093,371 → 1,093,371; **0 unexplained row gap** |
 | **Historical load** (`pipeline.py --mode historical`) | 1,043,868 fact rows inserted; dims 304 / 8,494 / 503,216 / 1,896 / 5,379. Fact load 62s |
 | **Idempotency, real case** (re-run full) | 1,043,868 offered, **0 inserted** everywhere |
 | **Incremental load** (`pipeline.py`) | watermark 2022-12-31 → 49,503 extracted, **49,503 inserted** |
 | **Idempotency, empty case** (re-run incremental) | watermark 2023-03-21 → **0 extracted**, gate skipped, 0 inserted |
 | **Final warehouse** | **fact_reviews 1,093,371** — matches `staging.review` exactly. Date range 2008-08-28 → 2023-03-21, avg rating 4.2990 |
-| **Quality fault injection** (`tests/test_quality.py`) | 8 passed, 0 failed |
+| **Quality fault injection** (`tests/unit/test_quality.py`) | 15 collected cases, all passing |
 | **Airflow, historical** | All tasks green; 1,043,868 fact rows. `load_fact_from_staging` SIGKILLed on the first attempt and succeeded after chunking (D15) |
 | **Airflow, incremental** | All tasks green in **22 seconds**; 49,503 rows → 1,093,371 total |
+| **Airflow completion verification (2026-08-12)** | `verification_historical_20260812`: success, 15 success + skipped watcher, **164s**. Controlled reset removed exactly 49,503 2023 rows; `verification_incremental_20260812` restored all rows in **27s**. Final fact count 1,093,371; watermark 2023-03-21; all 6 DAG staging tables empty |
 | **Staging cleanup** | All 6 staging tables at 0 rows after both runs (`trigger_rule="all_done"`) |
-| **Analytics views** | **9** views created; all 8 full-population views reconcile to 1,093,371 exactly |
+| **Analytics views** | **10** views created; all 8 full-population views reconcile to 1,093,371 exactly (`vw_rating_by_skin_type` and `vw_hype_vs_reality` are deliberate subsets) |
 | **DAG structure** | 16 tasks; 11/11 assertions pass in-container (watcher is the only leaf, watches all 15 others) |
-| **Test suite** | **45 passed**, 1 skipped locally (airflow not in the host venv) |
+| **Test suite** | **51 passed**, 1 skipped locally (airflow not in the host venv) |
 | **Migration idempotency** | All 22 migrations re-applied against a fully-loaded database with no error |
-| **Dashboard** | Both pages render via `AppTest`; KPI row equals `SELECT count(*), avg(rating) FROM dw.fact_reviews` |
+| **Dashboard** | Both pages render via `AppTest`; KPI row equals `SELECT count(*), avg(rating) FROM dw.fact_reviews`. Each of the 3 Deep-dive sliders asserted live individually (hype gap 1,660 → 484 products, price 1,660 → 935, skin tones 12 → 14 at floor 0) |
+| **Live-refresh demo, verified end to end** | `DELETE FROM dw.fact_reviews WHERE submission_date >= '2023-01-01'` → exactly 1,043,868 / watermark 2022-12-31; incremental restores 49,503 with 0 already present. `--mode historical` does **not** reset a full warehouse (no truncate anywhere, all loads `ON CONFLICT DO NOTHING`) |
 
 ### Headline analytics results (for the presentation)
 
@@ -235,6 +348,7 @@ Fill in from actual runs. Never estimate here — if it isn't measured, leave it
 | **BQ2 — hype vs reality** | Most overhyped: The Ordinary Vitamin C 23% — 132,601 loves, **3.4456** rating. The INKEY List Oat Cleansing Balm 127,819 loves / 3.6044. Sleeper hits: MACRENE actives products, ~200 loves and **4.93** ratings |
 | BQ2 — trend | Volume grew 2,760 (2008) → 215,278 (2020), then eased. Rating dipped to **4.2075 in 2020** and recovered to 4.3384 by 2022 |
 | BQ4 — skin type | Combination 4.3092 → dry 4.2911 → normal 4.2822 → **oily 4.2708**. Real but small spread (0.038) — worth stating as a weak signal, not a headline |
+| **Review length — the assumed finding is false** | "Unhappy customers write more" does **not** hold here. Avg rating is flat across every length bucket (4.2784 → 4.3342, spread **0.056**), and 1★ reviews are the *shortest* (median 230 chars vs 283 for 3★/4★). The real signal is polarisation: as length rises, the 1★ share falls **8.15% → 3.73%** *and* the 5★ share falls **67.35% → 61.07%**, so both tails shrink together and cancel in the mean. `rating_stddev` falls monotonically 1.2555 → 1.0589 |
 
 ---
 
@@ -305,6 +419,14 @@ Full reasoning lives in `docs/09_decision_log.md`. Summary:
   ones you would stop production for.
 - **D22** `sql/analytics/views/` (DDL, changes the database) is separate from
   `sql/validation/` (read-only assertions, changes nothing). Opposite jobs.
+- **D23** Dashboard controls are **query parameters, not dataframe filters**, and
+  the data-quality panel **recomputes rather than reads a stored summary**. Each
+  slider binds into the SQL (`WHERE hype_gap >= %s`, `BETWEEN %s AND %s`,
+  `HAVING sum(review_count) >= %s`); a client-side filter would look identical on
+  screen and be a different claim. The panel distinguishes **held back** from
+  **lost**: at the historical baseline the warehouse is legitimately 49,503 rows
+  behind staging, and a panel that called that a shortfall would be lying at
+  exactly the moment it is on screen during the demo.
 
 ### Deliberate deviations from the reference project
 

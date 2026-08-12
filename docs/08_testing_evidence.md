@@ -1,13 +1,13 @@
 # 08 — Testing Evidence
 
-**45 tests, 45 passing**, plus 11 DAG structural assertions verified inside the
-Airflow container. Last full run: **2026-08-08**.
+**51 tests, 51 passing**, plus 11 DAG structural assertions verified inside the
+Airflow container. Last full run: **2026-08-12**.
 
 ```
 tests/unit/test_quality.py                   15 tests   no database needed
 tests/unit/test_transform.py                 17 tests   no database needed
 tests/integration/test_pipeline_reconciliation.py  9 tests   needs Postgres
-tests/integration/test_dashboard_smoke.py     4 tests   needs Postgres + streamlit
+tests/integration/test_dashboard_smoke.py    10 tests   needs Postgres + streamlit
 tests/test_dag_structure.py                  12 tests   needs airflow (skips locally)
 tests/verify_dag_in_container.py             11 asserts runs inside the container
 ```
@@ -19,7 +19,7 @@ tests/verify_dag_in_container.py             11 asserts runs inside the containe
 ```powershell
 py -m pip install -r requirements.txt -r requirements-dev.txt
 
-py -m pytest -q                     # everything    -> 45 passed, 1 skipped
+py -m pytest -q                     # everything    -> 51 passed, 1 skipped
 py -m pytest -m "not integration"   # unit only, no database needed
 py -m pytest tests/unit/test_quality.py -q -k rating    # one concern
 
@@ -99,7 +99,7 @@ differences mattered.
 | `test_empty_incremental_batch_is_clean_noop` | Watermark current → 0 extracted → transform, reconcile and load all handle zero without raising |
 | `test_watermark_matches_max_fact_date` | The watermark cannot disagree with the data it describes, because it is read from it |
 
-### `tests/integration/test_dashboard_smoke.py` — the app actually runs (4)
+### `tests/integration/test_dashboard_smoke.py` — the app actually runs (10)
 
 Runs `dashboard/app.py` through Streamlit's `AppTest` harness.
 
@@ -113,6 +113,12 @@ Runs `dashboard/app.py` through Streamlit's `AppTest` harness.
 | **`test_overview_kpi_matches_the_warehouse`** | **The displayed review count and average rating equal `SELECT count(*), round(avg(rating),3) FROM dw.fact_reviews`.** The dashboard cannot show a number the warehouse disagrees with |
 | `test_deep_dive_page_renders` | Page 2 executes; BQ3 and BQ4 sections present |
 | `test_min_reviews_filter_is_live` | Changing the floor changes the output — the filter re-queries rather than redrawing a cached picture |
+| `test_hype_gap_slider_is_live` | Changing the hype-gap threshold changes the SQL-backed product set |
+| `test_price_range_slider_is_live` | Price bounds are bound into the warehouse query rather than filtering a preloaded frame |
+| `test_skin_group_floor_is_live` | The minimum skin-group sample size changes both BQ4 result sets |
+| `test_review_length_section_renders` | The review-length evidence and both supporting visuals render without an exception |
+| `test_review_length_view_reconciles_to_the_fact_table` | Every fact row lands in exactly one review-length bucket |
+| `test_data_quality_panel_reports_the_row_accounting` | The live panel re-derives source, warehouse, and integrity counts rather than reading a stored status claim |
 
 ### DAG structure (12 pytest / 11 in-container)
 
