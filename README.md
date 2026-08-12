@@ -45,49 +45,16 @@ The warehouse is structured to answer:
 
 ## Architecture
 
-```mermaid
-flowchart LR
-    CSV["6 source CSVs<br/>1,094,411 reviews"]
-
-    subgraph CLEAN["local scripts"]
-        EXP["explore.py"]
-        CLN["clean.py"]
-    end
-
-    subgraph OLTP["sephora_oltp"]
-        RAW[("raw")]
-        NF[("3nf")]
-        STG[("staging")]
-    end
-
-    subgraph ETL["etl/ package"]
-        EX["extract.py"]
-        TR["transform.py"]
-        RC["reconcile.py"]
-        QA["quality.py"]
-        LD["load.py"]
-    end
-
-    subgraph DW["sephora_dw — star schema"]
-        DIMS[("5 dimensions")]
-        FACT[("fact_reviews")]
-        VIEWS[("11 analytics views")]
-    end
-
-    BI["Streamlit dashboard"]
-
-    CSV --> EXP --> CLN --> RAW --> NF --> STG
-    STG --> EX --> TR --> RC --> QA --> LD
-    LD --> DIMS
-    LD --> FACT
-    DIMS --> VIEWS
-    FACT --> VIEWS
-    VIEWS --> BI
-```
+![Data flow from the source CSVs through the OLTP database and the star-schema warehouse to
+the Streamlit dashboard, orchestrated by Airflow](docs/diagrams/architecture.png)
 
 Three layers in the OLTP database, each with one job: `raw` mirrors the source for
 traceability, `3nf` removes the redundancy, `staging` pre-joins it back into the shape the ETL
 reads. The warehouse then denormalizes deliberately — that contrast is the point.
+
+Diagrams are generated, not drawn: [`docs/diagrams/build_diagrams.py`](docs/diagrams/build_diagrams.py)
+emits all three as SVG, so a schema change is a code change and the row counts on them are the
+measured ones.
 
 ## Status
 
@@ -124,69 +91,22 @@ Full profiling, verified relationships and quality findings:
 
 ## The data model
 
+### OLTP — `sephora_oltp`, the `3nf` schema
+
+Nine tables with foreign keys enforced. The four reviewer-attribute lookups hang off
+`review` rather than `author`, which is the one modelling choice that changes the numbers —
+see below.
+
+![The 3NF OLTP model: brand and category feeding product, author and four reviewer-attribute
+lookups feeding review](docs/diagrams/oltp_er.png)
+
+### Warehouse — `sephora_dw`, the `dw` schema
+
 Grain of `fact_reviews`: **one row per review.**
 
-```mermaid
-erDiagram
-    dim_product ||--o{ fact_reviews : product_key
-    dim_customer ||--o{ fact_reviews : customer_key
-    dim_reviewer_profile ||--o{ fact_reviews : reviewer_profile_key
-    dim_date ||--o{ fact_reviews : date_key
-    dim_brand ||--o{ dim_product : brand_key
-
-    dim_brand {
-        int brand_key PK
-        int brand_id
-        string brand_name
-    }
-    dim_product {
-        int product_key PK
-        string product_id
-        string product_name
-        int brand_key FK
-        string primary_category
-        string secondary_category
-        string tertiary_category
-        numeric price_usd
-        string price_band
-        int loves_count
-    }
-    dim_customer {
-        int customer_key PK
-        string customer_id
-    }
-    dim_reviewer_profile {
-        int reviewer_profile_key PK
-        string skin_tone
-        string skin_type
-        string eye_color
-        string hair_color
-    }
-    dim_date {
-        int date_key PK
-        date full_date
-        int year
-        int quarter
-        int month
-        string month_name
-        boolean is_weekend
-    }
-    fact_reviews {
-        int review_key PK
-        bigint source_row_id
-        string product_id
-        int product_key FK
-        int customer_key FK
-        int reviewer_profile_key FK
-        int date_key FK
-        smallint rating
-        boolean is_recommended
-        numeric helpfulness
-        int total_feedback_count
-        int review_length
-        date submission_date
-    }
-```
+![The star schema: fact_reviews at the centre with dim_product, dim_customer,
+dim_reviewer_profile and dim_date, and dim_brand snowflaked off
+dim_product](docs/diagrams/star_schema.png)
 
 ### The decision worth defending
 
@@ -366,11 +286,15 @@ presentation link is just <http://localhost:8501>.
 
 ## Presentation
 
-The completed eight-minute deck is available as an editable
-[`PowerPoint`](presentation/output/Sephora_Analytics_Pipeline.pptx) and a
-portable [`PDF`](presentation/output/Sephora_Analytics_Pipeline.pdf). See
-[`presentation/README.md`](presentation/README.md) for the timed slide sequence,
-speaker notes, and reproducible build command.
+The deck is [`presentation/sephora_pipeline_deck.html`](presentation/sephora_pipeline_deck.html) —
+nine slides, opened in any browser, arrow keys to advance. It is a single file next to its
+assets, so it diffs like the rest of the repo and the diagrams in it are the generated ones
+rather than screenshots of a drawing tool.
+
+The earlier [`PowerPoint`](presentation/output/Sephora_Analytics_Pipeline.pptx) and
+[`PDF`](presentation/output/Sephora_Analytics_Pipeline.pdf) predate the teardown DAG (D24) and
+the single-page dashboard (D25); the HTML deck is the current one. See
+[`presentation/README.md`](presentation/README.md) for the slide sequence and speaker notes.
 
 ### The headline finding
 
@@ -529,7 +453,12 @@ docs/
   README.md                      documentation index
   01..11                         problem statement -> walkthrough
   archive/                       superseded docs, kept
+  diagrams/                      build_diagrams.py -> architecture, OLTP ER, star schema
   screenshots/                   presentation captures
+presentation/
+  sephora_pipeline_deck.html     the nine-slide deck; open in a browser
+  assets/                        diagrams and chart crops the deck embeds
+  speaker_notes.md               what to say, per slide
 data/README.md                   where to get the CSVs and where to put them
 logs/                            per-run logs, timestamped
 ```
