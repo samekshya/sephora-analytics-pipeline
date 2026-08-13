@@ -8,9 +8,9 @@ The timings below total exactly **8:00**.
 | 1 | Title | 0:15 |
 | 2 | The problem | 0:45 |
 | 3 | The data source | 0:50 |
-| 4 | OLTP schema | 0:50 |
-| 5 | Star schema | 0:55 |
-| 6 | Architecture | 0:45 |
+| 4 | Architecture | 0:45 |
+| 5 | OLTP schema | 0:50 |
+| 6 | Star schema | 0:55 |
 | 7 | Airflow DAG | 1:10 |
 | 8 | Design decisions | 0:45 |
 | 9 | KPIs and the trend | 0:55 |
@@ -54,7 +54,19 @@ collides zero times across all five files, which gives the fact table a real ide
 Cleaning carries 1,093,371 rows forward and drops **no columns** — column trimming is a
 scope decision and happens later, explicitly.
 
-## Slide 4 — OLTP schema (0:50)
+## Slide 4 — Architecture (0:45)
+
+Left to right: `clean.py` and `ingest.py` take the CSVs into the OLTP database; the `etl`
+package extracts, transforms, reconciles, quality-checks and loads the warehouse; eleven SQL
+views are the dashboard's only read surface.
+
+Two physical databases, deliberately, so the normalized model and the dimensional one cannot
+quietly become one thing. Three named load modes — full, historical, and watermark-driven
+incremental — share one implementation and one set of quality checks. And nothing is dropped
+silently: every dropped row is counted against a named reason, and an unexplained gap raises
+`ReconciliationError` and stops the run.
+
+## Slide 5 — OLTP schema (0:50)
 
 Nine tables in third normal form, foreign keys enforced. Two transitive dependencies come
 out: `brand_name` depends on `brand_id`, not on the product, and the category triple likewise
@@ -71,7 +83,7 @@ Three layers, each with one job: `raw` mirrors the CSVs for traceability, `3nf` 
 relationships, `staging` flattens them back into one predictable shape for the ETL. Zero row
 gap across all three.
 
-## Slide 5 — Star schema (0:55)
+## Slide 6 — Star schema (0:55)
 
 One fact, five dimensions, one grain: one row per review.
 
@@ -85,18 +97,6 @@ and nothing downstream to notice. Instead the four correlated attributes bundle 
 Note what is *not* on the fact table: there is no `brand_key`. Brand is functionally
 determined by product, so a copy on a 1.09-million-row fact adds no information and creates a
 way for the two to disagree after a bad load. Brand analysis joins through `dim_product`.
-
-## Slide 6 — Architecture (0:45)
-
-Left to right: `clean.py` and `ingest.py` take the CSVs into the OLTP database; the `etl`
-package extracts, transforms, reconciles, quality-checks and loads the warehouse; eleven SQL
-views are the dashboard's only read surface.
-
-Two physical databases, deliberately, so the normalized model and the dimensional one cannot
-quietly become one thing. Three named load modes — full, historical, and watermark-driven
-incremental — share one implementation and one set of quality checks. And nothing is dropped
-silently: every dropped row is counted against a named reason, and an unexplained gap raises
-`ReconciliationError` and stops the run.
 
 ## Slide 7 — Airflow DAG (1:10)
 

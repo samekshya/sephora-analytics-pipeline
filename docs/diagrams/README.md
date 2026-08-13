@@ -7,9 +7,9 @@ out of date.
 
 | File | Shows | Used by |
 |---|---|---|
-| `architecture.*` | CSV → OLTP → warehouse → dashboard, with the Airflow task chain beneath | `README.md`, deck slide 6 |
-| `oltp_er.*` | The nine `3nf` tables and their foreign keys | `README.md`, deck slide 4 |
-| `star_schema.*` | `fact_reviews`, its five dimensions, and `dim_brand` snowflaked off `dim_product` | `README.md`, deck slide 5 |
+| `architecture.*` | CSV → OLTP → warehouse → dashboard, with the Airflow task chain beneath | `README.md`, deck slide 4 |
+| `oltp_er.*` | The nine `3nf` tables and their foreign keys | `README.md`, deck slide 5 |
+| `star_schema.*` | `fact_reviews`, its five dimensions, and `dim_brand` snowflaked off `dim_product` | `README.md`, deck slide 6 |
 
 Each is emitted as **SVG** — what the deck embeds, so it stays sharp at any projector
 resolution — with a **PNG** raster beside it for Markdown that cannot render SVG reliably.

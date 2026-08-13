@@ -7,10 +7,15 @@ browser — no build step, no server, no dependencies beyond the `assets/` folde
 |---|---|
 | Advance / go back | `→` `←`, space, or swipe |
 | Jump to a slide | `Home`, `End`, or the `#5` URL fragment |
+| Full screen | **`F`** — or `F11`, or the ⛶ button in the top-left corner |
 | Fit to screen | Automatic — the 1920×1080 stage scales to the window rather than reflowing |
 
-Present it full-screen (`F11`). The stage letterboxes, so the layout on the projector is the
-layout you proofed.
+Present it full-screen. `F11` is the browser's own shortcut and works when it is available to
+press, but on most laptops the top row is media keys unless `Fn` is held, and an IDE preview
+pane has no browser chrome to expand at all — so the deck carries its own toggle on **`F`**.
+Move the pointer into the top-left corner to reveal the button.
+
+The stage letterboxes, so the layout on the projector is the layout you proofed.
 
 ## Slide sequence
 
@@ -19,9 +24,9 @@ layout you proofed.
 | 1 | Title | Nothing else — it is the hold slide while people settle |
 | 2 | The problem | Why flat review files cannot answer the question, and who the project serves |
 | 3 | The data source | Measured shape of the raw files, the 14 profiling checks, and what cleaning changed |
-| 4 | OLTP schema | The `3nf` ER diagram, and the three-layer `raw → 3nf → staging` split |
-| 5 | Star schema | `fact_reviews` and its five dimensions, with the junk-dimension decision (D2) |
-| 6 | Architecture | End-to-end flow, and the Airflow strip underneath it |
+| 4 | Architecture | End-to-end flow, and the Airflow strip underneath it. Comes before the schemas so the audience has the whole shape before either layer is opened up |
+| 5 | OLTP schema | The `3nf` ER diagram, and the three-layer `raw → 3nf → staging` split |
+| 6 | Star schema | `fact_reviews` and its five dimensions, with the junk-dimension decision (D2) |
 | 7 | Airflow DAG | The graph as the running instance renders it, and why cleanup is a teardown (D24) |
 | 8 | Design decisions | D2, D11, D18 and D19/D21. D24 is not repeated here — slide 7 is about nothing else |
 | 9 | KPIs and the trend | The four headline numbers, then Q5: fifteen years of volume and rating |

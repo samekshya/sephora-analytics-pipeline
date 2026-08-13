@@ -468,6 +468,10 @@ code, .mono { font-family: var(--font-mono); font-size: 0.92em; }
 .edit-toggle.show, .edit-toggle.active { opacity: 1; pointer-events: auto; }
 .edit-toggle.active { background: var(--red); }
 
+/* Full-screen control, revealed by the same corner hotzone as the pencil so
+   the slides stay clean until you go looking for it. */
+.fs-toggle { left: 66px; font-size: 16px; }
+
 body.editing [data-edit]:hover { outline: 2px dashed var(--red); outline-offset: 4px; }
 body.editing [data-edit]:focus { outline: 2px solid var(--red); outline-offset: 4px; }
 </style>
@@ -477,6 +481,7 @@ body.editing [data-edit]:focus { outline: 2px solid var(--red); outline-offset: 
 <div class="progress" id="progress"></div>
 <div class="edit-hotzone"></div>
 <button class="edit-toggle" id="editToggle" title="Edit mode (E)" aria-label="Toggle edit mode">✎</button>
+<button class="edit-toggle fs-toggle" id="fsToggle" title="Full screen (F)" aria-label="Toggle full screen">⛶</button>
 
 <div class="deck-viewport">
 <main class="deck-stage" id="deckStage">
@@ -638,9 +643,56 @@ body.editing [data-edit]:focus { outline: 2px solid var(--red); outline-offset: 
     </div>
     <div class="foot"><span>Sephora Skincare Reviews · Data Engineering Capstone</span><span><b>03</b> / 10</span></div>
 </section>
+<!-- =======================================================================
+     SLIDE 4 — Architecture. Wide diagram on top, four points beneath.
+     ======================================================================= -->
+<section class="slide" aria-label="Architecture">
+    <div class="inner">
+        <div class="reveal">
+            <div class="kicker" data-edit>Architecture</div>
+            <h2 data-edit>From raw CSV to a live dashboard</h2>
+            <div class="rule"></div>
+        </div>
+
+        <div class="body reveal" style="flex-direction: column; gap: 26px; margin-top: 30px;">
+            <div class="figure" style="padding: 10px 14px;">
+                <img src="assets/architecture.svg" alt="End-to-end architecture from CSV through OLTP and the warehouse to Streamlit">
+            </div>
+
+            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 22px; flex: none;">
+                <div>
+                    <h4 style="font-size: 21px; font-weight: 600;" data-edit>Two physical databases</h4>
+                    <p style="font-size: 17px; line-height: 1.5; color: var(--muted); margin-top: 8px;" data-edit>
+                        <span class="mono">sephora_oltp</span> and <span class="mono">sephora_dw</span> are separate, so the
+                        normalized model and the dimensional one cannot quietly become one thing.</p>
+                </div>
+                <div>
+                    <h4 style="font-size: 21px; font-weight: 600;" data-edit>Views are the read surface</h4>
+                    <p style="font-size: 17px; line-height: 1.5; color: var(--muted); margin-top: 8px;" data-edit>
+                        The dashboard never reads a table. 11 SQL views sit between it and the
+                        warehouse, so a definition changes in one place.</p>
+                </div>
+                <div>
+                    <h4 style="font-size: 21px; font-weight: 600;" data-edit>Three named load modes</h4>
+                    <p style="font-size: 17px; line-height: 1.5; color: var(--muted); margin-top: 8px;" data-edit>
+                        <span class="mono">full</span>, <span class="mono">historical</span> and watermark-driven
+                        <span class="mono">incremental</span> share one implementation and one set of quality checks.</p>
+                </div>
+                <div>
+                    <h4 style="font-size: 21px; font-weight: 600;" data-edit>Nothing is dropped silently</h4>
+                    <p style="font-size: 17px; line-height: 1.5; color: var(--muted); margin-top: 8px;" data-edit>
+                        Every dropped row is counted against a named reason; an unexplained gap
+                        raises <span class="mono">ReconciliationError</span> and stops the run.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="foot"><span>Sephora Skincare Reviews · Data Engineering Capstone</span><span><b>04</b> / 10</span></div>
+</section>
+
 
 <!-- =======================================================================
-     SLIDE 4 — OLTP. Diagram carries the weight; the column explains why.
+     SLIDE 5 — OLTP. Diagram carries the weight; the column explains why.
      ======================================================================= -->
 <section class="slide" aria-label="OLTP schema">
     <div class="inner">
@@ -697,11 +749,11 @@ body.editing [data-edit]:focus { outline: 2px solid var(--red); outline-offset: 
             </div>
         </div>
     </div>
-    <div class="foot"><span>Sephora Skincare Reviews · Data Engineering Capstone</span><span><b>04</b> / 10</span></div>
+    <div class="foot"><span>Sephora Skincare Reviews · Data Engineering Capstone</span><span><b>05</b> / 10</span></div>
 </section>
 
 <!-- =======================================================================
-     SLIDE 5 — The warehouse star schema.
+     SLIDE 6 — The warehouse star schema.
      ======================================================================= -->
 <section class="slide" aria-label="Star schema">
     <div class="inner">
@@ -755,53 +807,6 @@ body.editing [data-edit]:focus { outline: 2px solid var(--red); outline-offset: 
                             1,043,868 rows and inserted 0.</p>
                         </div>
                     </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="foot"><span>Sephora Skincare Reviews · Data Engineering Capstone</span><span><b>05</b> / 10</span></div>
-</section>
-
-<!-- =======================================================================
-     SLIDE 6 — Architecture. Wide diagram on top, four points beneath.
-     ======================================================================= -->
-<section class="slide" aria-label="Architecture">
-    <div class="inner">
-        <div class="reveal">
-            <div class="kicker" data-edit>Architecture</div>
-            <h2 data-edit>From raw CSV to a live dashboard</h2>
-            <div class="rule"></div>
-        </div>
-
-        <div class="body reveal" style="flex-direction: column; gap: 26px; margin-top: 30px;">
-            <div class="figure" style="padding: 10px 14px;">
-                <img src="assets/architecture.svg" alt="End-to-end architecture from CSV through OLTP and the warehouse to Streamlit">
-            </div>
-
-            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 22px; flex: none;">
-                <div>
-                    <h4 style="font-size: 21px; font-weight: 600;" data-edit>Two physical databases</h4>
-                    <p style="font-size: 17px; line-height: 1.5; color: var(--muted); margin-top: 8px;" data-edit>
-                        <span class="mono">sephora_oltp</span> and <span class="mono">sephora_dw</span> are separate, so the
-                        normalized model and the dimensional one cannot quietly become one thing.</p>
-                </div>
-                <div>
-                    <h4 style="font-size: 21px; font-weight: 600;" data-edit>Views are the read surface</h4>
-                    <p style="font-size: 17px; line-height: 1.5; color: var(--muted); margin-top: 8px;" data-edit>
-                        The dashboard never reads a table. 11 SQL views sit between it and the
-                        warehouse, so a definition changes in one place.</p>
-                </div>
-                <div>
-                    <h4 style="font-size: 21px; font-weight: 600;" data-edit>Three named load modes</h4>
-                    <p style="font-size: 17px; line-height: 1.5; color: var(--muted); margin-top: 8px;" data-edit>
-                        <span class="mono">full</span>, <span class="mono">historical</span> and watermark-driven
-                        <span class="mono">incremental</span> share one implementation and one set of quality checks.</p>
-                </div>
-                <div>
-                    <h4 style="font-size: 21px; font-weight: 600;" data-edit>Nothing is dropped silently</h4>
-                    <p style="font-size: 17px; line-height: 1.5; color: var(--muted); margin-top: 8px;" data-edit>
-                        Every dropped row is counted against a named reason; an unexplained gap
-                        raises <span class="mono">ReconciliationError</span> and stops the run.</p>
                 </div>
             </div>
         </div>
@@ -1109,7 +1114,27 @@ class SlidePresentation {
                 e.preventDefault(); this.prev();
             } else if (e.key === 'Home') { this.show(0); }
             else if (e.key === 'End') { this.show(this.slides.length - 1); }
+            else if (e.key === 'f' || e.key === 'F') {
+                e.preventDefault(); this.toggleFullscreen();
+            }
         });
+    }
+
+    /* Full screen without F11.
+       F11 is the browser's own shortcut and this deck never intercepts it, but
+       it is not always available to press: on most laptops the top row is
+       media keys unless Fn is held, and an IDE preview pane has no browser
+       chrome to expand in the first place. The Fullscreen API does the same
+       job from inside the page, so `F` always works. */
+    toggleFullscreen() {
+        if (!document.fullscreenElement) {
+            const el = document.documentElement;
+            const req = el.requestFullscreen || el.webkitRequestFullscreen;
+            if (req) req.call(el).catch(() => {});
+        } else {
+            const exit = document.exitFullscreen || document.webkitExitFullscreen;
+            if (exit) exit.call(document).catch(() => {});
+        }
     }
 
     setupTouchNav() {
@@ -1213,25 +1238,30 @@ const editor = new InlineEditor();
 /* Three ways in: the button, the corner hotzone, and the E key. */
 const hotzone = document.querySelector('.edit-hotzone');
 const editToggle = document.getElementById('editToggle');
+const fsToggle = document.getElementById('fsToggle');
 let hideTimeout = null;
 
 editToggle.addEventListener('click', () => editor.toggleEditMode());
-hotzone.addEventListener('click', () => editor.toggleEditMode());
+// The hotzone reveals the controls; it no longer toggles edit mode on click,
+// because it also sits under the full-screen button and a stray click there
+// dropped the deck into edit mode mid-presentation.
+fsToggle.addEventListener('click', () => deck.toggleFullscreen());
 
 hotzone.addEventListener('mouseenter', () => {
     clearTimeout(hideTimeout);
     editToggle.classList.add('show');
+    fsToggle.classList.add('show');
 });
-hotzone.addEventListener('mouseleave', () => {
+const hideControls = () => {
     hideTimeout = setTimeout(() => {
         if (!editor.isActive) editToggle.classList.remove('show');
+        fsToggle.classList.remove('show');
     }, 400);
-});
-editToggle.addEventListener('mouseenter', () => clearTimeout(hideTimeout));
-editToggle.addEventListener('mouseleave', () => {
-    hideTimeout = setTimeout(() => {
-        if (!editor.isActive) editToggle.classList.remove('show');
-    }, 400);
+};
+hotzone.addEventListener('mouseleave', hideControls);
+[editToggle, fsToggle].forEach((btn) => {
+    btn.addEventListener('mouseenter', () => clearTimeout(hideTimeout));
+    btn.addEventListener('mouseleave', hideControls);
 });
 
 document.addEventListener('keydown', (e) => {
