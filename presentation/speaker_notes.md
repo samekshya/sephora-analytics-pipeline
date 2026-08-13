@@ -1,7 +1,7 @@
 # Sephora Skincare Reviews — 8-minute speaking guide
 
-Written against [`sephora_pipeline_deck.html`](sephora_pipeline_deck.html), ten slides.
-The timings below total exactly **8:00**.
+Written against [`sephora_pipeline_deck.html`](sephora_pipeline_deck.html), eleven slides.
+The timings below total exactly **8:00**; slide 11 is the closing hold and carries no time.
 
 | Slide | Topic | Time |
 |---|---|---|
@@ -164,6 +164,13 @@ read from zero.
 
 And every filter on that dashboard is a SQL parameter, not a dataframe filter. A client-side
 filter would look identical on screen and be a different claim.
+
+## Slide 11 — Thank you (no time budgeted)
+
+Advance to it as you finish the last sentence, not before. It carries no argument on purpose —
+it is what stays on the projector while people ask things, and a slide with content on it
+invites reading instead of listening. The eight minutes are already spent by the time it
+appears.
 
 ---
 

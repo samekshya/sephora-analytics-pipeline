@@ -24,10 +24,10 @@ tasks / 33 edges to **15 / 21** by replacing the failure watcher with a teardown
 
 | | |
 |---|---|
-| Current branch | `dag-simplification` — the D24 work, **not yet merged** |
-| `main` | `e2a4323` — the completion merge, local only |
-| Remote state | `origin/main` still at `90edfab`; **nothing since has been pushed** |
-| Deck | **`presentation/sephora_pipeline_deck.html` — ten slides, current, the one to present.** Opens in a browser, no build step. Embeds the generated SVG diagrams, the DAG graph, a generated trend figure and two cropped dashboard charts |
+| Current branch | `main` |
+| `main` | merged, pushed, and in sync with `origin/main` |
+| Remote state | up to date — everything through the presentation work is pushed |
+| Deck | **`presentation/sephora_pipeline_deck.html` — eleven slides, current, the one to present.** Opens in a browser, no build step. Embeds the generated SVG diagrams, the DAG graph, a generated trend figure and two cropped dashboard charts |
 | Diagrams | `docs/diagrams/build_diagrams.py` generates architecture, OLTP ER and star schema as SVG (+ PNG rasters for Markdown). Used by both the README and the deck — see that folder's README to regenerate |
 | Screenshots | The three the deck uses are **current** (`airflow_dag_graph`, `chart_price_rating`, `chart_price_spread`). The original four are **still STALE** and now feed only `build_deck.ps1` |
 | PowerPoint | `build_deck.ps1` → `presentation/output/*.pptx|pdf` is **superseded**: eight slides, pre-D24/D25, stale captures. Kept as the path to an editable Office file if one is ever required |
@@ -62,7 +62,7 @@ sql/validation/     dashboard_checks.sql — read-only assertions, changes nothi
 dashboard/app.py    Streamlit, ONE page, Sephora theme, live Postgres connection (D25)
 tests/              unit/ + integration/ + test_dag_structure.py + verify_dag_in_container.py
 docs/               01–11 + README index; guide/ holds the 12-page PDF walkthrough; diagrams/ generates the 3 diagrams; screenshots/
-presentation/       sephora_pipeline_deck.html — the 9-slide deck; assets/, speaker_notes.md
+presentation/       sephora_pipeline_deck.html — the 11-slide deck; assets/, build_charts.py, speaker_notes.md
 setup.ps1           11 resumable steps, end to end from empty Docker to loaded warehouse
 reference/          the course's reference project — the format constraint, see section 1
 ```
@@ -79,7 +79,7 @@ docker compose up -d
 .\setup.ps1
 
 # 3. Tests
-py -m pytest              # 51 collected; 1 skips locally (airflow not in host venv)
+py -m pytest              # 52 collected; 1 skips locally (airflow not in host venv)
 
 # 4. Dashboard
 py -m streamlit run dashboard/app.py        # http://localhost:8501
@@ -93,14 +93,13 @@ defaults. Source CSVs are **not** in git — `data/README.md` says where to get 
 
 ### What remains — the actual to-do list
 
-1. **Merge `dag-simplification`**, then push. `origin` is 14+ commits behind.
-2. Optional: re-capture the four original screenshots (see `docs/screenshots/README.md`).
+1. Optional: re-capture the four original screenshots (see `docs/screenshots/README.md`).
    They no longer block the presentation — the HTML deck does not read them — but
    `build_deck.ps1` still does, and `failure_proof_v2_20260812` (a **failed** run with
    `cleanup_staging` green) remains the most persuasive evidence in the set.
-3. Optional: `docs/07_dashboard_insights.md` predates the review-length view, and
+2. Optional: `docs/07_dashboard_insights.md` predates the review-length view, and
    `docs/03_architecture.md` predates the generated architecture diagram.
-4. If the numbers ever move, regenerate the PDF guide — `docs/guide/README.md` has the
+3. If the numbers ever move, regenerate the PDF guide — `docs/guide/README.md` has the
    one-line Chrome command — and re-run `build_diagrams.py`, which has the row counts on it.
 
 ### Things that look like bugs and are not
@@ -273,7 +272,7 @@ Indexes on all four fact FK columns. **No `brand_key` on the fact table** (D11).
 | 10. Documentation | **Done** — `docs/01`–`11` + index; 24 decisions logged |
 | 11. Reproducibility | **Done** — `setup.ps1`, 11 resumable steps; `.env.example` with working defaults |
 | — Dashboard polish | **Done and merged** — status strip, 3 query-param controls, shareable Deep-dive URL, `vw_rating_by_review_length`, data-quality panel, shared page shape. Source of D23 |
-| — Presentation deck | **Done** — `presentation/sephora_pipeline_deck.html`, 10 slides timed to 8:00, every slide rendered and visually inspected. Covers all five course requirements including the KPI strip and trend (slide 9). Supersedes the 8-slide PowerPoint, which is kept and marked stale |
+| — Presentation deck | **Done** — `presentation/sephora_pipeline_deck.html`, 11 slides timed to 8:00, every slide rendered and visually inspected. Covers all five course requirements including the KPI strip and trend (slide 9). Supersedes the 8-slide PowerPoint, which is kept and marked stale |
 | — Diagrams | **Done** — architecture, OLTP ER and star schema, generated by `docs/diagrams/build_diagrams.py` as SVG (deck) + PNG (Markdown). Wired into the README, replacing two Mermaid blocks |
 | — Screenshots | **Partly stale by design** — the 3 the deck uses are current; the original 4 feed only `build_deck.ps1`. `docs/screenshots/README.md` marks which is which |
 

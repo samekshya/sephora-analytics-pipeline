@@ -287,7 +287,7 @@ presentation link is just <http://localhost:8501>.
 ## Presentation
 
 The deck is [`presentation/sephora_pipeline_deck.html`](presentation/sephora_pipeline_deck.html) —
-ten slides, opened in any browser, arrow keys to advance. It is a single file next to its
+eleven slides, opened in any browser, arrow keys to advance. It is a single file next to its
 assets, so it diffs like the rest of the repo and the diagrams in it are the generated ones
 rather than screenshots of a drawing tool.
 
@@ -457,7 +457,7 @@ docs/
   diagrams/                      build_diagrams.py -> architecture, OLTP ER, star schema
   screenshots/                   presentation captures
 presentation/
-  sephora_pipeline_deck.html     the ten-slide deck; open in a browser
+  sephora_pipeline_deck.html     the eleven-slide deck; open in a browser
   assets/                        diagrams and chart crops the deck embeds
   speaker_notes.md               what to say, per slide
 data/README.md                   where to get the CSVs and where to put them

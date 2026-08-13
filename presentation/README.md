@@ -31,6 +31,7 @@ The stage letterboxes, so the layout on the projector is the layout you proofed.
 | 8 | Design decisions | D2, D11, D18 and D19/D21. D24 is not repeated here — slide 7 is about nothing else |
 | 9 | KPIs and the trend | The four headline numbers, then Q5: fifteen years of volume and rating |
 | 10 | Price vs satisfaction | Q3: price against rating and against spread, both live reads |
+| 11 | Thank you | A bookend to the cover — the slide that stays up through questions. No footer, no page number |
 
 [`speaker_notes.md`](speaker_notes.md) is the readable script.
 
