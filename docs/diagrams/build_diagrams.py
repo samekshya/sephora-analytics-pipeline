@@ -202,7 +202,7 @@ def architecture():
         ], None, None),
         ("DASHBOARD  ·  Streamlit", "#17110F", [
             ("One page, live connection", "queries Postgres on every", "filter change"),
-            ("5 business questions", "BQ1-BQ5, each backed", "by a named view"),
+            ("5 business questions", "Q1-Q5, each backed", "by a named view"),
             ("4 query-bound controls", "filters are SQL parameters,", "not dataframe filters"),
         ], None, None),
     ]

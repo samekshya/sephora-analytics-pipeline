@@ -1,4 +1,4 @@
--- BQ4, second half: do reviewers of different SKIN TONES rate differently?
+-- Q4, second half: do reviewers of different SKIN TONES rate differently?
 --
 -- Separate from vw_rating_by_skin_type rather than crossed with it. Crossing
 -- 13 tones x 4 types gives 52 cells whose smaller members carry too few
@@ -31,4 +31,4 @@ JOIN dw.dim_product p           ON p.product_key = f.product_key
 GROUP BY rp.skin_tone, p.primary_category, p.secondary_category;
 
 COMMENT ON VIEW dw.vw_rating_by_skin_tone IS
-    'BQ4: skin tone vs rating. Trustworthy only because of the junk dimension (D2). Unknown retained deliberately.';
+    'Q4: skin tone vs rating. Trustworthy only because of the junk dimension (D2). Unknown retained deliberately.';

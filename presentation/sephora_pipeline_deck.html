@@ -573,7 +573,7 @@ body.editing [data-edit]:focus { outline: 2px solid var(--red); outline-offset: 
             </div>
         </div>
     </div>
-    <div class="foot"><span>Sephora Skincare Reviews · Data Engineering Capstone</span><span><b>02</b> / 09</span></div>
+    <div class="foot"><span>Sephora Skincare Reviews · Data Engineering Capstone</span><span><b>02</b> / 10</span></div>
 </section>
 
 <!-- =======================================================================
@@ -610,18 +610,14 @@ body.editing [data-edit]:focus { outline: 2px solid var(--red); outline-offset: 
                             <b>1,040 duplicate reviews</b> on (author, product, date) — but 5,525 on
                             (author, product), so the difference is legitimate re-reviews.</p></div></div>
                         <div class="point"><div class="n">·</div><div><p style="color: var(--ink); font-size: 19px;" data-edit>
-                            <b>Two spellings of one colour</b>: <code>Grey</code> and <code>gray</code>, 4,859 rows.</p></div></div>
-                        <div class="point"><div class="n">·</div><div><p style="color: var(--ink); font-size: 19px;" data-edit>
-                            <b>A sentinel posing as a value</b>: <code>notSureST</code> is “not sure”, not a skin tone.</p></div></div>
+                            <b>Two values that were not values</b>: <code>Grey</code> and <code>gray</code> are one
+                            colour, 4,859 rows; <code>notSureST</code> is “not sure”, not a skin tone.</p></div></div>
                         <div class="point"><div class="n">·</div><div><p style="color: var(--ink); font-size: 19px;" data-edit>
                             <b>Nulls that are undefined, not missing</b>: <code>helpfulness</code> is null exactly
                             when feedback count is 0 — so it is never imputed.</p></div></div>
                         <div class="point"><div class="n">·</div><div><p style="color: var(--ink); font-size: 19px;" data-edit>
                             <b>A usable idempotency key</b>: <code>(source_row_id, product_id)</code> collides
                             0 times across all five files, so re-running a load cannot duplicate a row.</p></div></div>
-                        <div class="point"><div class="n">·</div><div><p style="color: var(--ink); font-size: 19px;" data-edit>
-                            <b>Nothing orphaned</b>: 0 reviews point at a product outside the catalogue,
-                            and 0 rows disagree on the feedback split.</p></div></div>
                     </div>
                 </div>
 
@@ -637,7 +633,7 @@ body.editing [data-edit]:focus { outline: 2px solid var(--red); outline-offset: 
             </div>
         </div>
     </div>
-    <div class="foot"><span>Sephora Skincare Reviews · Data Engineering Capstone</span><span><b>03</b> / 09</span></div>
+    <div class="foot"><span>Sephora Skincare Reviews · Data Engineering Capstone</span><span><b>03</b> / 10</span></div>
 </section>
 
 <!-- =======================================================================
@@ -698,7 +694,7 @@ body.editing [data-edit]:focus { outline: 2px solid var(--red); outline-offset: 
             </div>
         </div>
     </div>
-    <div class="foot"><span>Sephora Skincare Reviews · Data Engineering Capstone</span><span><b>04</b> / 09</span></div>
+    <div class="foot"><span>Sephora Skincare Reviews · Data Engineering Capstone</span><span><b>04</b> / 10</span></div>
 </section>
 
 <!-- =======================================================================
@@ -760,7 +756,7 @@ body.editing [data-edit]:focus { outline: 2px solid var(--red); outline-offset: 
             </div>
         </div>
     </div>
-    <div class="foot"><span>Sephora Skincare Reviews · Data Engineering Capstone</span><span><b>05</b> / 09</span></div>
+    <div class="foot"><span>Sephora Skincare Reviews · Data Engineering Capstone</span><span><b>05</b> / 10</span></div>
 </section>
 
 <!-- =======================================================================
@@ -807,7 +803,7 @@ body.editing [data-edit]:focus { outline: 2px solid var(--red); outline-offset: 
             </div>
         </div>
     </div>
-    <div class="foot"><span>Sephora Skincare Reviews · Data Engineering Capstone</span><span><b>06</b> / 09</span></div>
+    <div class="foot"><span>Sephora Skincare Reviews · Data Engineering Capstone</span><span><b>06</b> / 10</span></div>
 </section>
 
 <!-- =======================================================================
@@ -859,7 +855,7 @@ body.editing [data-edit]:focus { outline: 2px solid var(--red); outline-offset: 
             </div>
         </div>
     </div>
-    <div class="foot"><span>Sephora Skincare Reviews · Data Engineering Capstone</span><span><b>07</b> / 09</span></div>
+    <div class="foot"><span>Sephora Skincare Reviews · Data Engineering Capstone</span><span><b>07</b> / 10</span></div>
 </section>
 
 <!-- =======================================================================
@@ -889,14 +885,17 @@ body.editing [data-edit]:focus { outline: 2px solid var(--red); outline-offset: 
                     <b style="color: var(--ink);">Cost: one extra join.</b></p>
             </div>
 
+            <!-- D24 is deliberately not repeated here: the previous slide is
+                 about nothing else. D18 is the decision an examiner is most
+                 likely to challenge, and it appeared nowhere in the deck. -->
             <div class="card center">
-                <div class="kicker" style="color: var(--red);">D24 · Orchestration</div>
-                <h4 style="font-size: 27px; font-weight: 600; margin-top: 12px;" data-edit>A failed run must look failed</h4>
+                <div class="kicker" style="color: var(--red);">D18 · Tooling</div>
+                <h4 style="font-size: 27px; font-weight: 600; margin-top: 12px;" data-edit>Streamlit instead of Power BI</h4>
                 <p style="font-size: 18px; line-height: 1.55; color: var(--muted); margin-top: 12px;" data-edit>
-                    An <span class="mono">all_done</span> cleanup task is the standard advice, and it silently
-                    turned every failure green. The fix is a teardown, which Airflow excludes from
-                    run-state calculation — the same guarantee in
-                    <b style="color: var(--ink);">15 tasks and 21 edges</b> instead of 16 and 33.</p>
+                    The dashboard lives in the repository: versioned, diffable, smoke-tested in CI,
+                    reproducible with one command. The cost is real and worth stating plainly —
+                    <b style="color: var(--ink);">no DAX and no Power BI model are demonstrated</b>.
+                    That trade is logged, not hidden.</p>
             </div>
 
             <div class="card center">
@@ -920,16 +919,77 @@ body.editing [data-edit]:focus { outline: 2px solid var(--red); outline-offset: 
             </div>
         </div>
     </div>
-    <div class="foot"><span>Sephora Skincare Reviews · Data Engineering Capstone</span><span><b>08</b> / 09</span></div>
+    <div class="foot"><span>Sephora Skincare Reviews · Data Engineering Capstone</span><span><b>08</b> / 10</span></div>
 </section>
 
 <!-- =======================================================================
-     SLIDE 9 — The dashboard result. Two live charts, cropped from the app.
+     SLIDE 9 — What the warehouse answers: the KPI strip and the trend.
+     The figure is generated by presentation/build_charts.py from the same view
+     the dashboard reads, so the two cannot state different numbers.
+     ======================================================================= -->
+<section class="slide" aria-label="Dashboard KPIs and trend">
+    <div class="inner">
+        <div class="reveal">
+            <div class="kicker" data-edit>The dashboard · Q5</div>
+            <h2 data-edit>Fifteen years, and the dip that explains itself</h2>
+            <div class="rule"></div>
+        </div>
+
+        <div class="body reveal" style="flex-direction: column; gap: 24px; margin-top: 30px;">
+            <!-- The KPI strip. These four are what the dashboard shows above
+                 everything else, so they open the results section here too. -->
+            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 22px; flex: none;">
+                <div class="stat"><div class="v">1,093,371</div><div class="k">reviews in the fact table</div></div>
+                <div class="stat red"><div class="v">4.299</div><div class="k">average rating, all reviews</div></div>
+                <div class="stat"><div class="v">84.0%</div><div class="k">would recommend</div></div>
+                <div class="stat"><div class="v">2,351</div><div class="k">products reviewed, of 8,494</div></div>
+            </div>
+
+            <div style="display: flex; gap: 34px; flex: 1; min-height: 0;">
+                <div class="figure dark" style="flex: 1.65;"><img src="assets/chart_trend.svg" alt="Monthly review volume rising to a 2020 peak, with average rating dipping in 2020 and recovering"></div>
+
+                <div class="col" style="flex: 0.85; justify-content: flex-start;">
+                    <div class="points" style="gap: 22px;">
+                        <div class="point">
+                            <div class="n">·</div>
+                            <div>
+                                <h4 data-edit>Growth, then a plateau</h4>
+                                <p data-edit>Volume climbs for twelve years to <b style="color: var(--ink);">23,917
+                                reviews</b> in April 2020, then settles rather than falling.</p>
+                            </div>
+                        </div>
+                        <div class="point">
+                            <div class="n">·</div>
+                            <div>
+                                <h4 data-edit>The 2020 dip is real, and small</h4>
+                                <p data-edit>Rating bottoms at <b style="color: var(--ink);">4.12</b> on the rolling
+                                line and recovers to 4.34 by 2022. Four hundredths of a star — worth
+                                showing, not worth a story.</p>
+                            </div>
+                        </div>
+                        <div class="point">
+                            <div class="n">·</div>
+                            <div>
+                                <h4 data-edit>The last bar is dimmed on purpose</h4>
+                                <p data-edit>March 2023 ends on the 21st. Drawn like the rest it reads as a
+                                collapse in demand, which would be the chart lying about a partial month.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="foot"><span>Sephora Skincare Reviews · Data Engineering Capstone</span><span><b>09</b> / 10</span></div>
+</section>
+
+<!-- =======================================================================
+     SLIDE 10 — The dashboard result. Two live charts, cropped from the app.
      ======================================================================= -->
 <section class="slide" aria-label="Dashboard finding">
     <div class="inner">
         <div class="reveal">
-            <div class="kicker" data-edit>The dashboard · BQ3</div>
+            <div class="kicker" data-edit>The dashboard · Q3</div>
             <h2 data-edit>Price does not predict satisfaction — not linearly</h2>
             <div class="rule"></div>
         </div>
@@ -993,7 +1053,7 @@ body.editing [data-edit]:focus { outline: 2px solid var(--red); outline-offset: 
             </div>
         </div>
     </div>
-    <div class="foot"><span>Sephora Skincare Reviews · Data Engineering Capstone</span><span><b>09</b> / 09</span></div>
+    <div class="foot"><span>Sephora Skincare Reviews · Data Engineering Capstone</span><span><b>10</b> / 10</span></div>
 </section>
 
 </main>

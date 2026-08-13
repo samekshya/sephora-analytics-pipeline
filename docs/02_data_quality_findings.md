@@ -107,7 +107,7 @@ A customer dimension keyed `UNIQUE` on the author and holding these four
 attributes would force one profile per person — silently mis-tagging roughly
 **one review in seven**, with no constraint violation and nothing downstream to
 notice. It would corrupt precisely the business question those attributes exist
-to answer (BQ4).
+to answer (Q4).
 
 Resolved with a **junk dimension**, `dim_reviewer_profile`, joined from the
 fact table at the grain the attributes were actually recorded: per review.

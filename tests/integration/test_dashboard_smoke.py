@@ -112,7 +112,7 @@ def test_all_five_business_questions_are_on_the_one_page():
   at = _run()
 
   headers = " ".join(h.value for h in at.subheader)
-  for bq in ("BQ1", "BQ2", "BQ3", "BQ4", "BQ5"):
+  for bq in ("Q1", "Q2", "Q3", "Q4", "Q5"):
     assert bq in headers, f"{bq} is missing from the page"
 
 

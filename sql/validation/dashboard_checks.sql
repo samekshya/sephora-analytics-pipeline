@@ -96,7 +96,7 @@ SELECT
     (SELECT count(*) FROM dw.dim_date)             AS dates;
 
 \echo ''
-\echo '=== 7. BQ1: top / bottom brands (min 500 reviews) ==='
+\echo '=== 7. Q1: top / bottom brands (min 500 reviews) ==='
 SELECT brand_name, review_count, avg_rating, recommend_pct, avg_price_usd
 FROM dw.vw_rating_by_brand WHERE review_count >= 500
 ORDER BY avg_rating DESC LIMIT 5;
@@ -106,7 +106,7 @@ FROM dw.vw_rating_by_brand WHERE review_count >= 500
 ORDER BY avg_rating ASC LIMIT 5;
 
 \echo ''
-\echo '=== 8. BQ1: secondary categories (the level that varies - D16) ==='
+\echo '=== 8. Q1: secondary categories (the level that varies - D16) ==='
 -- Every reviewed product is Skincare at the primary level, so primary_category
 -- is a single bar. Stated explicitly rather than left to be inferred.
 SELECT secondary_category,
@@ -116,7 +116,7 @@ FROM dw.vw_rating_by_category
 GROUP BY secondary_category ORDER BY reviews DESC;
 
 \echo ''
-\echo '=== 9. BQ2: hype vs reality - most overhyped products ==='
+\echo '=== 9. Q2: hype vs reality - most overhyped products ==='
 SELECT product_name, brand_name, loves_count, review_count, avg_rating, hype_gap
 FROM dw.vw_hype_vs_reality ORDER BY hype_gap DESC LIMIT 10;
 
@@ -126,12 +126,12 @@ SELECT product_name, brand_name, loves_count, review_count, avg_rating, hype_gap
 FROM dw.vw_hype_vs_reality ORDER BY hype_gap ASC LIMIT 10;
 
 \echo ''
-\echo '=== 10. BQ3: does price predict satisfaction? ==='
+\echo '=== 10. Q3: does price predict satisfaction? ==='
 SELECT price_band, review_count, product_count, avg_rating, recommend_pct, rating_stddev
 FROM dw.vw_rating_by_price_band ORDER BY band_order;
 
 \echo ''
-\echo '=== 11. BQ4: skin type and skin tone vs rating ==='
+\echo '=== 11. Q4: skin type and skin tone vs rating ==='
 SELECT skin_type,
        sum(review_count)                                            AS reviews,
        round(sum(avg_rating * review_count) / sum(review_count), 4) AS avg_rating
@@ -143,7 +143,7 @@ SELECT skin_tone,
 FROM dw.vw_rating_by_skin_tone GROUP BY skin_tone ORDER BY reviews DESC;
 
 \echo ''
-\echo '=== 12. BQ5: yearly volume and rating trend ==='
+\echo '=== 12. Q5: yearly volume and rating trend ==='
 SELECT year,
        sum(review_count)                                            AS reviews,
        round(sum(avg_rating * review_count) / sum(review_count), 4) AS avg_rating

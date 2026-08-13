@@ -166,8 +166,17 @@ def get_connection():
 
   cache_resource, not cache_data: a connection is a handle, not a value, and
   reopening it on every rerun would cost a round trip per widget interaction.
+
+  autocommit is not a detail. psycopg2 opens a transaction on the first query
+  and holds it until commit, so a long-lived read-only connection sits in
+  `idle in transaction` between page interactions. That blocks any DDL on the
+  objects it touched: re-applying a view while the dashboard was open hung on
+  an ACCESS EXCLUSIVE lock until the dashboard was killed. Reads need no
+  transaction, so this takes none.
   """
-  return psycopg2.connect(**DW_CONFIG)
+  conn = psycopg2.connect(**DW_CONFIG)
+  conn.set_session(autocommit=True, readonly=True)
+  return conn
 
 
 @st.cache_data(ttl=300)
@@ -326,10 +335,10 @@ def header_and_kpis():
 
 
 # --------------------------------------------------------------------------
-# BQ5 — trend over time
+# Q5 — trend over time
 # --------------------------------------------------------------------------
 
-def bq5_trend():
+def q5_trend():
   trend = q("""
     SELECT month_start, review_count, avg_rating, rolling_3m_avg_rating,
            is_partial_month
@@ -344,7 +353,7 @@ def bq5_trend():
   low = trend.loc[trend["avg_rating"].idxmin()]
 
   section(
-    "BQ5 · How do review volume and rating trend over time?",
+    "Q5 · How do review volume and rating trend over time?",
     f"Volume grew for twelve years to a peak of <b>{int(peak['review_count']):,} "
     f"reviews</b> in {peak['month_start']:%B %Y}, then eased. Average rating "
     f"sagged to <b>{low['avg_rating']:.2f}</b> around {low['month_start']:%Y} "
@@ -402,10 +411,10 @@ def bq5_trend():
 
 
 # --------------------------------------------------------------------------
-# BQ1 — brands and categories
+# Q1 — brands and categories
 # --------------------------------------------------------------------------
 
-def bq1_brands(min_reviews, overall_rating, categories, scoped, picked_brands):
+def q1_brands(min_reviews, overall_rating, categories, scoped, picked_brands):
   # Two queries, one per scope, rather than one query with a clever predicate.
   # When nothing is filtered, vw_rating_by_brand is the authoritative brand
   # aggregate and is what dashboard_checks.sql validates. When a category
@@ -438,7 +447,7 @@ def bq1_brands(min_reviews, overall_rating, categories, scoped, picked_brands):
     """, (int(min_reviews), len(picked_brands), picked_brands or [""]))
 
   if brands.empty:
-    section("BQ1 · Which brands rate best, and which underperform?",
+    section("Q1 · Which brands rate best, and which underperform?",
             "No brand matches the current filters.")
     if picked_brands:
       st.info(
@@ -458,7 +467,7 @@ def bq1_brands(min_reviews, overall_rating, categories, scoped, picked_brands):
   # those few happen to differ by, so the claim is dropped rather than restated
   # over a population that cannot support it.
   section(
-    "BQ1 · Which brands rate best, and which underperform?",
+    "Q1 · Which brands rate best, and which underperform?",
     f"<b>{top.iloc[0]['brand_name']}</b> at {top.iloc[0]['avg_rating']:.2f} to "
     f"<b>{bottom.iloc[-1]['brand_name']}</b> at "
     f"{bottom.iloc[-1]['avg_rating']:.2f} — a spread of <b>{spread:.2f} stars</b>."
@@ -503,7 +512,7 @@ def bq1_brands(min_reviews, overall_rating, categories, scoped, picked_brands):
   )
 
 
-def bq1_categories(categories):
+def q1_categories(categories):
   cats = q("""
     SELECT secondary_category,
            sum(review_count)                                            AS reviews,
@@ -554,10 +563,10 @@ def bq1_categories(categories):
 
 
 # --------------------------------------------------------------------------
-# BQ3 — price
+# Q3 — price
 # --------------------------------------------------------------------------
 
-def bq3_price():
+def q3_price():
   bands = q("""
     SELECT price_band, band_order, review_count, product_count,
            avg_rating, recommend_pct, rating_stddev
@@ -577,7 +586,7 @@ def bq3_price():
   # version meant the caption disagreed with the chart beside it.
   same_band = peak["price_band"] == tightest["price_band"]
   section(
-    "BQ3 · Does price predict satisfaction?",
+    "Q3 · Does price predict satisfaction?",
     f"Not linearly. Ratings climb to <b>{peak['avg_rating']:.3f}</b> at "
     f"<b>{peak['price_band']}</b> and fall back above it — an inverted U. "
     + (f"Agreement peaks in the <b>same band</b>: rating spread is tightest at "
@@ -642,10 +651,10 @@ def bq3_price():
 
 
 # --------------------------------------------------------------------------
-# BQ2 — hype vs reality
+# Q2 — hype vs reality
 # --------------------------------------------------------------------------
 
-def bq2_hype(categories, picked_brands):
+def q2_hype(categories, picked_brands):
   hype = q("""
     SELECT product_name, brand_name, secondary_category, price_usd,
            loves_count, review_count, avg_rating, hype_gap
@@ -656,7 +665,7 @@ def bq2_hype(categories, picked_brands):
   """, (categories, len(picked_brands), picked_brands or [""]))
   if hype.empty:
     if picked_brands:
-      section("BQ2 · Hype vs reality — which products are loved more than they deserve?",
+      section("Q2 · Hype vs reality — which products are loved more than they deserve?",
               "No product from the selected brands clears the 50-review floor.")
       st.info(
         "`vw_hype_vs_reality` only carries products with at least 50 reviews, "
@@ -667,7 +676,7 @@ def bq2_hype(categories, picked_brands):
   worst = hype.iloc[0]
 
   section(
-    "BQ2 · Hype vs reality — which products are loved more than they deserve?",
+    "Q2 · Hype vs reality — which products are loved more than they deserve?",
     f"Wanting a product and liking it are different signals. "
     f"<b>{worst['brand_name']} {worst['product_name']}</b> is the widest gap "
     f"{'in the current selection' if picked_brands else 'in the catalogue'}: "
@@ -747,10 +756,10 @@ def bq2_hype(categories, picked_brands):
 
 
 # --------------------------------------------------------------------------
-# BQ4 + review length
+# Q4 + review length
 # --------------------------------------------------------------------------
 
-def bq4_and_length(categories):
+def q4_and_length(categories):
   skin = q("""
     SELECT skin_type,
            sum(review_count)                                            AS reviews,
@@ -778,7 +787,7 @@ def bq4_and_length(categories):
   short, long_ = plotted.iloc[0], plotted.iloc[-1]
 
   section(
-    "BQ4 · Does who is reviewing, or how much they write, change the rating?",
+    "Q4 · Does who is reviewing, or how much they write, change the rating?",
     f"Barely, and both answers are worth stating plainly. Skin type moves the "
     f"average by <b>{skin_spread:.3f} of a star</b> — real, measurable, and too "
     f"small to act on. Review length moves it almost not at all, but it hides "
@@ -1200,20 +1209,20 @@ def main():
       f"away; the sidebar note **What the filters scope** lists exactly which.")
   st.divider()
 
-  bq5_trend()
+  q5_trend()
   st.divider()
 
-  bq1_brands(min_reviews, float(k["avg_rating"]), categories, scoped, brands)
-  bq1_categories(categories)
+  q1_brands(min_reviews, float(k["avg_rating"]), categories, scoped, brands)
+  q1_categories(categories)
   st.divider()
 
-  bq3_price()
+  q3_price()
   st.divider()
 
-  bq2_hype(categories, brands)
+  q2_hype(categories, brands)
   st.divider()
 
-  bq4_and_length(categories)
+  q4_and_length(categories)
   st.divider()
 
   product_explorer(categories, brands)

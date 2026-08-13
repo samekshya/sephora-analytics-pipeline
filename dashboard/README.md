@@ -35,12 +35,12 @@ heading, so the page can be read without interpreting a single chart.
 
 | # | Question | Visual | Source view |
 |---|---|---|---|
-| BQ5 | How do volume and rating trend over time? | Monthly volume bars (partial month greyed) + monthly vs 3-month rolling rating lines | `vw_review_volume_by_month` |
-| BQ1 | Which brands rate best, and which underperform? | Diverging horizontal bars: each brand's distance from the 4.299 overall average | `vw_rating_by_brand` |
-| BQ1b | Which categories rate best? | Horizontal **dot plot**, ordered | `vw_rating_by_category` |
-| BQ3 | Does price predict satisfaction? | Line across the ordered price bands (the inverted U) + a spread line | `vw_rating_by_price_band` |
-| BQ2 | Hype vs reality — high loves, low rating | Diverging scatter, three worst direct-labelled, plus two ranked tables in an expander | `vw_hype_vs_reality` |
-| BQ4 | Does who reviews, or how much they write, change the rating? | Skin-type **dot plot** + review-length **small multiples** | `vw_rating_by_skin_type`, `vw_rating_by_review_length` |
+| Q5 | How do volume and rating trend over time? | Monthly volume bars (partial month greyed) + monthly vs 3-month rolling rating lines | `vw_review_volume_by_month` |
+| Q1 | Which brands rate best, and which underperform? | Diverging horizontal bars: each brand's distance from the 4.299 overall average | `vw_rating_by_brand` |
+| Q1b | Which categories rate best? | Horizontal **dot plot**, ordered | `vw_rating_by_category` |
+| Q3 | Does price predict satisfaction? | Line across the ordered price bands (the inverted U) + a spread line | `vw_rating_by_price_band` |
+| Q2 | Hype vs reality — high loves, low rating | Diverging scatter, three worst direct-labelled, plus two ranked tables in an expander | `vw_hype_vs_reality` |
+| Q4 | Does who reviews, or how much they write, change the rating? | Skin-type **dot plot** + review-length **small multiples** | `vw_rating_by_skin_type`, `vw_rating_by_review_length` |
 
 ### Why dots and lines rather than bars
 
@@ -102,9 +102,9 @@ review length and the monthly trend all aggregate brand away entirely; there is
 no column to filter on. They stay catalogue-wide, and the banner says so rather
 than leaving the reader to assume the whole page narrowed.
 
-Two claims stand down when a brand selection is active: BQ1 stops asserting that
+Two claims stand down when a brand selection is active: Q1 stops asserting that
 brand outweighs every other effect (with three brands selected the spread is
-whatever those three happen to differ by), and BQ2's widest gap is described as
+whatever those three happen to differ by), and Q2's widest gap is described as
 the widest *in the current selection* rather than in the catalogue.
 
 Brand lives in the sidebar with the other scope filters. It was previously a
@@ -289,7 +289,7 @@ Expect **1,043,868** and a watermark of **2022-12-31**.
    without being able to report success on the run's behalf (D24).
 4. Back on the dashboard, click **Refresh data** in the sidebar.
 5. The strip now reads **1,093,371** with **+49,503 since last refresh**, and
-   the watermark has moved to **2023-03-21**. The BQ5 trend chart has grown
+   the watermark has moved to **2023-03-21**. The Q5 trend chart has grown
    three months of 2023, and the data quality panel's gap has closed to zero.
 
 **Then close the loop on idempotency** — this is the part people remember.

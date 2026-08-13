@@ -25,4 +25,4 @@ JOIN dw.dim_product p ON p.product_key = f.product_key
 GROUP BY p.price_band;
 
 COMMENT ON VIEW dw.vw_rating_by_price_band IS
-    'BQ3: does price predict satisfaction. Bands computed in transform.py so all visuals agree.';
+    'Q3: does price predict satisfaction. Bands computed in transform.py so all visuals agree.';

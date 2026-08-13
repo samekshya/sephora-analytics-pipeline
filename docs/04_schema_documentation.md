@@ -205,7 +205,7 @@ no-op.
 | 5 boolean flags | `BOOLEAN NOT NULL` | |
 
 Category is **flattened**; brand **is** snowflaked to `dim_brand`. Brand is a
-genuine analytic entity in its own right (BQ1) and 304 rows makes the join
+genuine analytic entity in its own right (Q1) and 304 rows makes the join
 cheap; the category levels are filtered and grouped on constantly, and a star
 schema pays for that with redundancy rather than joins.
 

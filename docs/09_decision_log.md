@@ -729,11 +729,11 @@ Recorded so the absence is a decision rather than an oversight:
 
 | Filter | Cost | Verdict |
 |---|---|---|
-| Price range | Free — `price_usd` is on `vw_hype_vs_reality` | Available; the price-band section already answers BQ3 more directly |
+| Price range | Free — `price_usd` is on `vw_hype_vs_reality` | Available; the price-band section already answers Q3 more directly |
 | Rating / recommend threshold | Free on the product view | Selecting on the outcome invites survivorship reasoning |
 | Product flags (`sephora_exclusive`, `limited_edition`, …) | Needs a view; they sit on `dim_product` | Genuinely interesting, no business question attached |
-| Date range | Needs a category × month view | Cut — the trend chart is the whole point of BQ5 and shortening it removes the finding |
-| Skin tone / type as a *filter* | Needs a fact-level predicate on the junk dimension | It is a **dimension of the answer** in BQ4, not a filter on it |
+| Date range | Needs a category × month view | Cut — the trend chart is the whole point of Q5 and shortening it removes the finding |
+| Skin tone / type as a *filter* | Needs a fact-level predicate on the junk dimension | It is a **dimension of the answer** in Q4, not a filter on it |
 | Tertiary category | Free — already on `dim_product` | 174 triples is too many for a usable control |
 
 ### The palette was validated, not chosen

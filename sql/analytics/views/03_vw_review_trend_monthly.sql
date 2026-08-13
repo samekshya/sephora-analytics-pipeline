@@ -20,4 +20,4 @@ JOIN dw.dim_date d ON d.date_key = f.date_key
 GROUP BY d.year, d.month, d.month_name;
 
 COMMENT ON VIEW dw.vw_review_trend_monthly IS
-    'BQ2: monthly review volume and average rating. Note 2023 is partial (to 21 March).';
+    'Q2: monthly review volume and average rating. Note 2023 is partial (to 21 March).';

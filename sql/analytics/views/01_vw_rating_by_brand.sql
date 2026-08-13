@@ -20,4 +20,4 @@ JOIN dw.dim_brand   b ON b.brand_key   = p.brand_key
 GROUP BY b.brand_key, b.brand_name;
 
 COMMENT ON VIEW dw.vw_rating_by_brand IS
-    'BQ1a: rating and recommendation rate per brand. Filter on review_count in the dashboard.';
+    'Q1a: rating and recommendation rate per brand. Filter on review_count in the dashboard.';

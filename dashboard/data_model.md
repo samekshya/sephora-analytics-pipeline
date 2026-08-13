@@ -12,14 +12,14 @@ meets each view scrolling down.
 | View | Feeds | Grain |
 |---|---|---|
 | `vw_kpi_summary` | The 5-metric KPI row and the live watermark | 1 row |
-| `vw_review_volume_by_month` | BQ5 volume bars, monthly + rolling rating lines | 1 row per month (176) |
-| `vw_rating_by_brand` | BQ1 brands-against-the-average diverging bars, unfiltered | 1 row per brand (304) |
+| `vw_review_volume_by_month` | Q5 volume bars, monthly + rolling rating lines | 1 row per month (176) |
+| `vw_rating_by_brand` | Q1 brands-against-the-average diverging bars, unfiltered | 1 row per brand (304) |
 | `vw_rating_by_brand_category` | The same chart when a Category filter is on | 1 row per (brand, secondary category) |
-| `vw_rating_by_category` | BQ1b category dot plot | 1 row per category triple (174) |
-| `vw_rating_by_price_band` | BQ3 rating line and spread line | 1 row per band (5) |
-| `vw_hype_vs_reality` | BQ2 hype scatter and both ranked tables | 1 row per product with ≥50 reviews (1,660) |
-| `vw_rating_by_skin_type` | BQ4 skin-type dot plot | skin_type × category |
-| `vw_rating_by_review_length` | BQ4 review-length small multiples | 1 row per length bucket (6) |
+| `vw_rating_by_category` | Q1b category dot plot | 1 row per category triple (174) |
+| `vw_rating_by_price_band` | Q3 rating line and spread line | 1 row per band (5) |
+| `vw_hype_vs_reality` | Q2 hype scatter and both ranked tables | 1 row per product with ≥50 reviews (1,660) |
+| `vw_rating_by_skin_type` | Q4 skin-type dot plot | skin_type × category |
+| `vw_rating_by_review_length` | Q4 review-length small multiples | 1 row per length bucket (6) |
 | `vw_hype_vs_reality` | Also backs the **Explore** product table (brand picker + name search) | 1 row per product with ≥50 reviews (1,660) |
 
 `vw_rating_by_skin_tone` is no longer read by a chart. It is still validated by
@@ -79,7 +79,7 @@ exists as a view rather than being assembled in the app.
 gave more than one distinct answer across their reviews, covering 149,788
 reviews (13.69%). Held on `dim_customer` behind a unique key, one profile would
 have been forced per author and roughly one review in seven mis-tagged, with no
-constraint violation and nothing downstream to notice. **The BQ4 charts are the
+constraint violation and nothing downstream to notice. **The Q4 charts are the
 exact visual that would have been quietly wrong.**
 
 ## Freshness

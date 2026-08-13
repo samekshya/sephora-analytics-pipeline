@@ -30,4 +30,4 @@ JOIN dw.dim_brand   b ON b.brand_key   = p.brand_key
 GROUP BY b.brand_key, b.brand_name, p.secondary_category;
 
 COMMENT ON VIEW dw.vw_rating_by_brand_category IS
-    'BQ1a sliced by secondary category, so the dashboard category filter can scope the brand chart. Re-aggregate with a review_count-weighted mean.';
+    'Q1a sliced by secondary category, so the dashboard category filter can scope the brand chart. Re-aggregate with a review_count-weighted mean.';

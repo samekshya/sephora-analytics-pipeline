@@ -43,7 +43,7 @@ the generated diagrams in [`../diagrams/`](../diagrams/).
 >
 > | Save as | Capture |
 > |---|---|
-> | `streamlit_overview.png` | Top of the page — KPI card, BQ5 volume bars and the rating trend |
+> | `streamlit_overview.png` | Top of the page — KPI card, Q5 volume bars and the rating trend |
 > | `streamlit_analysis.png` | Further down — the price line pair and the hype scatter |
 >
 > ```powershell

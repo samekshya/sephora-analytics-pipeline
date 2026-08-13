@@ -24,4 +24,4 @@ WHERE p.primary_category = 'Skincare'
 GROUP BY rp.skin_type, p.primary_category, p.secondary_category;
 
 COMMENT ON VIEW dw.vw_rating_by_skin_type IS
-    'BQ4: skin type vs rating on skincare. Trustworthy only because of the junk dimension (D2).';
+    'Q4: skin type vs rating on skincare. Trustworthy only because of the junk dimension (D2).';

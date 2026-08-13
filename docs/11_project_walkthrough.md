@@ -548,19 +548,19 @@ Ten SQL views expose the warehouse at dashboard-ready grains. Keeping the
 definitions in versioned SQL means the Streamlit app and the validation script
 share one source of truth.
 
-1. **`vw_rating_by_brand`** — BQ1 brand performance with explicit sample size.
-2. **`vw_rating_by_category`** — BQ1 category performance at the useful
+1. **`vw_rating_by_brand`** — Q1 brand performance with explicit sample size.
+2. **`vw_rating_by_category`** — Q1 category performance at the useful
    secondary-category level (D16).
-3. **`vw_review_trend_monthly`** — BQ5 monthly rating and volume trend.
-4. **`vw_rating_by_price_band`** — BQ3 ordered price bands and rating spread.
-5. **`vw_rating_by_skin_type`** — BQ4 skin-type comparison through the junk
+3. **`vw_review_trend_monthly`** — Q5 monthly rating and volume trend.
+4. **`vw_rating_by_price_band`** — Q3 ordered price bands and rating spread.
+5. **`vw_rating_by_skin_type`** — Q4 skin-type comparison through the junk
    dimension created for review-level profiles.
 6. **`vw_kpi_summary`** — the single-row dashboard KPI strip.
-7. **`vw_hype_vs_reality`** — BQ2 product love/rating gap for products with at
+7. **`vw_hype_vs_reality`** — Q2 product love/rating gap for products with at
    least 50 reviews.
 8. **`vw_review_volume_by_month`** — rolling volume, cumulative volume, growth,
    and the partial-month flag using window functions.
-9. **`vw_rating_by_skin_tone`** — BQ4 skin-tone comparison without hiding the
+9. **`vw_rating_by_skin_tone`** — Q4 skin-tone comparison without hiding the
    `Unknown` group.
 10. **`vw_rating_by_review_length`** — mutually exclusive review-length buckets,
     rating variation, and the 1-star/5-star tails.
@@ -573,17 +573,17 @@ full-population view to `fact_reviews`.
 
 - **Overall**: 1,093,371 reviews, average rating **4.2990**, and **83.99%**
   recommend.
-- **BQ3**: price and satisfaction form an inverted U. The $50–100 band peaks at
+- **Q3**: price and satisfaction form an inverted U. The $50–100 band peaks at
   **4.3335**; $100+ falls to **4.2708**. Rating variation also narrows as price
   rises.
-- **BQ2**: The Ordinary Vitamin C Suspension combines 132,601 loves with a
+- **Q2**: The Ordinary Vitamin C Suspension combines 132,601 loves with a
   **3.4456** rating, the largest measured hype gap at the default floor.
-- **BQ1**: MARA leads eligible brands at 4.8608; Topicals trails at 3.6590.
+- **Q1**: MARA leads eligible brands at 4.8608; Topicals trails at 3.6590.
   Cleansers lead the high-volume secondary categories at 4.3443, while
   Sunscreen is lowest at 4.1665.
-- **BQ4**: skin-type and skin-tone differences are real but small; the
+- **Q4**: skin-type and skin-tone differences are real but small; the
   skin-type spread is only 0.038 stars and is presented as a weak signal.
-- **BQ5**: volume peaked at 215,278 reviews in 2020 while rating reached its
+- **Q5**: volume peaked at 215,278 reviews in 2020 while rating reached its
   lowest yearly average, 4.2075; ratings recovered by 2022.
 - **Review length**: longer reviews are more moderate, not more negative. Both
   the 1-star and 5-star shares shrink and rating standard deviation falls from

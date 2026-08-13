@@ -112,7 +112,7 @@ Runs `dashboard/app.py` through Streamlit's `AppTest` harness.
 | `test_page_renders_with_kpis` | The page executes with no exception; KPI metrics present |
 | **`test_kpis_match_the_warehouse`** | **The displayed review count and average rating equal `SELECT count(*), round(avg(rating),3) FROM dw.fact_reviews`.** The dashboard cannot show a number the warehouse disagrees with |
 | `test_the_page_is_a_single_page` | No page selector survives in the sidebar (D25) |
-| `test_all_five_business_questions_are_on_the_one_page` | BQ1–BQ5 all appear as headings without navigating |
+| `test_all_five_business_questions_are_on_the_one_page` | Q1–Q5 all appear as headings without navigating |
 | `test_min_reviews_filter_is_live` | Changing the floor changes the output — the one surviving control re-queries rather than redrawing a cached picture |
 | `test_review_length_finding_is_stated` | The page keeps stating that the obvious hypothesis fails on this data |
 | `test_review_length_view_reconciles_to_the_fact_table` | Every fact row lands in exactly one review-length bucket |

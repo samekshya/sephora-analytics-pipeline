@@ -89,4 +89,4 @@ FROM monthly m
 CROSS JOIN bounds b;
 
 COMMENT ON VIEW dw.vw_review_volume_by_month IS
-    'BQ5: monthly volume with rolling 3-month and cumulative average rating (window functions). is_partial_month flags the incomplete final month.';
+    'Q5: monthly volume with rolling 3-month and cumulative average rating (window functions). is_partial_month flags the incomplete final month.';

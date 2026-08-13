@@ -168,13 +168,13 @@
     <tr><td><code>product_name</code></td><td>text</td><td>Carried through to <code>dim_product</code></td></tr>
     <tr><td><code>brand_id</code></td><td>integer</td><td><span class="pill f">FK</span> Strictly 1:1 with <code>brand_name</code> — becomes the <code>brand</code> table</td></tr>
     <tr><td><code>brand_name</code></td><td>text</td><td>Moved out to <code>3nf.brand</code>; removed from product (redundancy)</td></tr>
-    <tr><td><code>loves_count</code></td><td>integer</td><td>Wishlist adds. Drives BQ2 — recorded <i>before</i> purchase</td></tr>
+    <tr><td><code>loves_count</code></td><td>integer</td><td>Wishlist adds. Drives Q2 — recorded <i>before</i> purchase</td></tr>
     <tr><td><code>rating</code></td><td>numeric</td><td>Site-displayed average. <b>Not used</b> — the warehouse recomputes from reviews</td></tr>
     <tr><td><code>reviews</code></td><td>integer</td><td>Site-displayed count. Not used, for the same reason</td></tr>
     <tr><td><code>size</code></td><td>text</td><td>Free text ("1.7 oz / 50 mL"). Kept on <code>dim_product</code></td></tr>
     <tr><td><code>variation_type</code> / <code>_value</code> / <code>_desc</code></td><td>text</td><td>Shade or size variants. Dropped at raw → 3NF (out of scope)</td></tr>
     <tr><td><code>ingredients</code></td><td>text</td><td>Long free text. Dropped at raw → 3NF</td></tr>
-    <tr><td><code>price_usd</code></td><td>numeric</td><td>Drives BQ3. Banded into <code>price_band</code> once, in the ETL</td></tr>
+    <tr><td><code>price_usd</code></td><td>numeric</td><td>Drives Q3. Banded into <code>price_band</code> once, in the ETL</td></tr>
     <tr><td><code>value_price_usd</code>, <code>sale_price_usd</code></td><td>numeric</td><td>Sparse. Dropped at raw → 3NF</td></tr>
     <tr><td><code>limited_edition</code>, <code>new</code>, <code>online_only</code>, <code>out_of_stock</code>, <code>sephora_exclusive</code></td><td>boolean</td><td>Five flags. All kept on <code>dim_product</code></td></tr>
     <tr><td><code>highlights</code></td><td>text</td><td>Stringified list, 112 tags. <b>Measured, then deliberately descoped</b> — a genuine many-to-many (D3)</td></tr>
@@ -449,7 +449,7 @@ dropped=5 (accounted=95), UNEXPLAINED=5.</pre>
     <p style="margin-top:5px">One row per customer forces one profile per person, so
     roughly <b>one review in seven</b> would carry a profile the reviewer never gave on
     that review — silently, with no constraint violation and nothing downstream to notice.
-    It would have quietly corrupted BQ4 specifically. The fix: <code>dim_customer</code>
+    It would have quietly corrupted Q4 specifically. The fix: <code>dim_customer</code>
     keeps identity only, and a <b>1,896-row junk dimension</b> holds the four attributes
     at the grain they were actually recorded.</p>
   </div>
@@ -596,12 +596,12 @@ dropped=5 (accounted=95), UNEXPLAINED=5.</pre>
 
   <table class="tight">
     <tr><th style="width:16mm">#</th><th style="width:54mm">Question</th><th>What the data says</th></tr>
-    <tr><td><b>BQ5</b></td><td>How do volume and rating trend over time?</td><td>Volume grew twelve years to a peak, then eased. Rating dipped to 4.21 in 2020 and recovered to 4.34</td></tr>
-    <tr><td><b>BQ1</b></td><td>Which brands rate best and worst?</td><td>MARA 4.86 → Topicals 3.66 — a spread of <b>1.20 stars</b>, the largest effect anywhere on the page</td></tr>
-    <tr><td><b>BQ1b</b></td><td>Which categories rate best?</td><td>Cleansers 4.344 → Self Tanners 4.080. Spread of 0.26 — <b>category matters far less than brand</b></td></tr>
-    <tr><td><b>BQ3</b></td><td>Does price predict satisfaction?</td><td><b>An inverted U.</b> 4.238 under $15 → <b>4.334 at $50–100</b> → 4.271 above $100. Agreement peaks in the <b>same band</b> (std dev 1.0996, widening to 1.1366 above $100), so $50–100 is the sweet spot on both measures</td></tr>
-    <tr><td><b>BQ2</b></td><td>Hype vs reality</td><td>The Ordinary Vitamin C 23%: <b>132,601 loves, 3.45 rating</b>. Loves are recorded before purchase, ratings after — the gap is marketing outperforming the product</td></tr>
-    <tr><td><b>BQ4</b></td><td>Do reviewer profile or review length matter?</td><td>Both barely. Skin type moves the average 0.04. Review length moves it almost not at all — but short reviews are <b>polarised</b>: 1★ share falls 8.15%→3.73% <i>and</i> 5★ share falls 67.35%→62.52%, so both tails shrink and cancel in the mean</td></tr>
+    <tr><td><b>Q5</b></td><td>How do volume and rating trend over time?</td><td>Volume grew twelve years to a peak, then eased. Rating dipped to 4.21 in 2020 and recovered to 4.34</td></tr>
+    <tr><td><b>Q1</b></td><td>Which brands rate best and worst?</td><td>MARA 4.86 → Topicals 3.66 — a spread of <b>1.20 stars</b>, the largest effect anywhere on the page</td></tr>
+    <tr><td><b>Q1b</b></td><td>Which categories rate best?</td><td>Cleansers 4.344 → Self Tanners 4.080. Spread of 0.26 — <b>category matters far less than brand</b></td></tr>
+    <tr><td><b>Q3</b></td><td>Does price predict satisfaction?</td><td><b>An inverted U.</b> 4.238 under $15 → <b>4.334 at $50–100</b> → 4.271 above $100. Agreement peaks in the <b>same band</b> (std dev 1.0996, widening to 1.1366 above $100), so $50–100 is the sweet spot on both measures</td></tr>
+    <tr><td><b>Q2</b></td><td>Hype vs reality</td><td>The Ordinary Vitamin C 23%: <b>132,601 loves, 3.45 rating</b>. Loves are recorded before purchase, ratings after — the gap is marketing outperforming the product</td></tr>
+    <tr><td><b>Q4</b></td><td>Do reviewer profile or review length matter?</td><td>Both barely. Skin type moves the average 0.04. Review length moves it almost not at all — but short reviews are <b>polarised</b>: 1★ share falls 8.15%→3.73% <i>and</i> 5★ share falls 67.35%→62.52%, so both tails shrink and cancel in the mean</td></tr>
   </table>
 
   <h3>Filters</h3>

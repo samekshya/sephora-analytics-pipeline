@@ -45,11 +45,11 @@ dropping one requires a decision-log entry.
 
 | # | Question | Answered by |
 |---|---|---|
-| **BQ1** | Which brands and categories earn the highest ratings, and which underperform? | `vw_rating_by_brand`, `vw_rating_by_category` |
-| **BQ2** | Hype vs reality — which products have high `loves_count` but low ratings? | `vw_hype_vs_reality` |
-| **BQ3** | Does price predict satisfaction — do expensive products actually rate better? | `vw_rating_by_price_band` |
-| **BQ4** | Do reviewers with different skin types and tones rate the same products differently? | `vw_rating_by_skin_type`, `vw_rating_by_skin_tone` |
-| **BQ5** | How do review volume and average rating trend over time? | `vw_review_volume_by_month` |
+| **Q1** | Which brands and categories earn the highest ratings, and which underperform? | `vw_rating_by_brand`, `vw_rating_by_category` |
+| **Q2** | Hype vs reality — which products have high `loves_count` but low ratings? | `vw_hype_vs_reality` |
+| **Q3** | Does price predict satisfaction — do expensive products actually rate better? | `vw_rating_by_price_band` |
+| **Q4** | Do reviewers with different skin types and tones rate the same products differently? | `vw_rating_by_skin_type`, `vw_rating_by_skin_tone` |
+| **Q5** | How do review volume and average rating trend over time? | `vw_review_volume_by_month` |
 
 A sixth question — *which product attributes (Vegan, Clean at Sephora…)
 correlate with rating?* — was evaluated against the data and deliberately

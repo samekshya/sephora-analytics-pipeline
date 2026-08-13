@@ -9,7 +9,7 @@ reproducible with `sql/validation/dashboard_checks.sql`. Nothing is estimated.
 
 ---
 
-## BQ3 — Does price predict satisfaction? *(the headline finding)*
+## Q3 — Does price predict satisfaction? *(the headline finding)*
 
 **No, not linearly. The relationship is an inverted U, and it reverses above $100.**
 
@@ -45,7 +45,7 @@ Above $100 expectations appear to outrun what the product can deliver.
 
 ---
 
-## BQ1 — Which brands and categories rate best and worst?
+## Q1 — Which brands and categories rate best and worst?
 
 ### Brands (minimum 500 reviews — 106 of 304 brands qualify)
 
@@ -91,7 +91,7 @@ expectations are simplest to meet are the ones that satisfy.
 
 ---
 
-## BQ2 — Hype vs reality
+## Q2 — Hype vs reality
 
 `loves_count` is a wishlist add, recorded **before** purchase. Rating is
 recorded **after**. The gap between the two, as percentile ranks, is `hype_gap`.
@@ -127,7 +127,7 @@ Near-perfect ratings on a few hundred wishlist adds. Minimum 50 reviews applies
 
 ---
 
-## BQ4 — Do skin type and tone change ratings?
+## Q4 — Do skin type and tone change ratings?
 
 ### Skin type
 
@@ -179,7 +179,7 @@ filter `Unknown` out without saying so.
 
 ---
 
-## BQ5 — Volume and rating over time
+## Q5 — Volume and rating over time
 
 | Year | Reviews | Avg rating | | Year | Reviews | Avg rating |
 |---|---|---|---|---|---|---|

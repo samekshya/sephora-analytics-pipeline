@@ -59,4 +59,4 @@ SELECT
 FROM product_stats;
 
 COMMENT ON VIEW dw.vw_hype_vs_reality IS
-    'BQ2: loves_count vs avg_rating as percentile ranks. hype_gap > 0 = overhyped, < 0 = sleeper hit. Min 50 reviews.';
+    'Q2: loves_count vs avg_rating as percentile ranks. hype_gap > 0 = overhyped, < 0 = sleeper hit. Min 50 reviews.';

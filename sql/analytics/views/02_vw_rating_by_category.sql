@@ -24,4 +24,4 @@ JOIN dw.dim_product p ON p.product_key = f.product_key
 GROUP BY p.primary_category, p.secondary_category, p.tertiary_category;
 
 COMMENT ON VIEW dw.vw_rating_by_category IS
-    'BQ1b: rating per category triple. Not rolled up - the levels are not a true hierarchy (D1).';
+    'Q1b: rating per category triple. Not rolled up - the levels are not a true hierarchy (D1).';

@@ -1,29 +1,30 @@
 # Sephora Skincare Reviews — 8-minute speaking guide
 
-Written against [`sephora_pipeline_deck.html`](sephora_pipeline_deck.html), nine slides.
+Written against [`sephora_pipeline_deck.html`](sephora_pipeline_deck.html), ten slides.
 The timings below total exactly **8:00**.
 
 | Slide | Topic | Time |
 |---|---|---|
-| 1 | Title | 0:20 |
-| 2 | The problem | 0:50 |
-| 3 | The data source | 0:55 |
-| 4 | OLTP schema | 0:55 |
-| 5 | Star schema | 1:00 |
-| 6 | Architecture | 0:50 |
-| 7 | Airflow DAG | 1:15 |
-| 8 | Design decisions | 0:50 |
-| 9 | Dashboard | 1:05 |
+| 1 | Title | 0:15 |
+| 2 | The problem | 0:45 |
+| 3 | The data source | 0:50 |
+| 4 | OLTP schema | 0:50 |
+| 5 | Star schema | 0:55 |
+| 6 | Architecture | 0:45 |
+| 7 | Airflow DAG | 1:10 |
+| 8 | Design decisions | 0:45 |
+| 9 | KPIs and the trend | 0:55 |
+| 10 | Price vs satisfaction | 0:50 |
 
 ---
 
-## Slide 1 — Title (0:20)
+## Slide 1 — Title (0:15)
 
 An end-to-end analytics pipeline over the Sephora catalogue and 1.09 million skincare
 reviews: raw CSV, a normalized OLTP database, a star-schema warehouse, Airflow, and a live
 dashboard. Everything shown is measured against a loaded database, not estimated.
 
-## Slide 2 — The problem (0:50)
+## Slide 2 — The problem (0:45)
 
 The reviews already exist — the problem is that nothing lets you compare with them. You can
 read one product page at a time, and a star rating on its own is not an answer: a product
@@ -37,7 +38,7 @@ things, so the most marketed product reads as the best product.
 This project makes each of those comparisons a single query, for shoppers, for brand and
 category managers, and for analysts.
 
-## Slide 3 — The data source (0:55)
+## Slide 3 — The data source (0:50)
 
 A public Kaggle dataset: one product catalogue and five review files, fifteen years of
 reviews from August 2008 to March 2023. 1,094,411 raw review rows, 8,494 products, 304
@@ -53,7 +54,7 @@ collides zero times across all five files, which gives the fact table a real ide
 Cleaning carries 1,093,371 rows forward and drops **no columns** — column trimming is a
 scope decision and happens later, explicitly.
 
-## Slide 4 — OLTP schema (0:55)
+## Slide 4 — OLTP schema (0:50)
 
 Nine tables in third normal form, foreign keys enforced. Two transitive dependencies come
 out: `brand_name` depends on `brand_id`, not on the product, and the category triple likewise
@@ -70,7 +71,7 @@ Three layers, each with one job: `raw` mirrors the CSVs for traceability, `3nf` 
 relationships, `staging` flattens them back into one predictable shape for the ETL. Zero row
 gap across all three.
 
-## Slide 5 — Star schema (1:00)
+## Slide 5 — Star schema (0:55)
 
 One fact, five dimensions, one grain: one row per review.
 
@@ -85,7 +86,7 @@ Note what is *not* on the fact table: there is no `brand_key`. Brand is function
 determined by product, so a copy on a 1.09-million-row fact adds no information and creates a
 way for the two to disagree after a bad load. Brand analysis joins through `dim_product`.
 
-## Slide 6 — Architecture (0:50)
+## Slide 6 — Architecture (0:45)
 
 Left to right: `clean.py` and `ingest.py` take the CSVs into the OLTP database; the `etl`
 package extracts, transforms, reconciles, quality-checks and loads the warehouse; eleven SQL
@@ -97,7 +98,7 @@ incremental — share one implementation and one set of quality checks. And noth
 silently: every dropped row is counted against a named reason, and an unexplained gap raises
 `ReconciliationError` and stops the run.
 
-## Slide 7 — Airflow DAG (1:15)
+## Slide 7 — Airflow DAG (1:10)
 
 Fifteen tasks, as the running instance renders them. The four dimensions load in parallel;
 product waits on brand for its foreign key. The fact path is split into four separate tasks —
@@ -117,16 +118,37 @@ exposed a pre-existing race that stranded 513,606 staging rows, because cleanup 
 waiting on the fact load. It now waits on every staging writer. Historical runs green in 134
 seconds, incremental restores 49,503 rows in 22.
 
-## Slide 8 — Design decisions (0:50)
+## Slide 8 — Design decisions (0:45)
 
 Twenty-four decisions are logged with the measurement behind each. These four changed the
 shape of the project: the junk dimension instead of a profile on the customer; no `brand_key`
-on the fact, because redundancy is only worth it when it buys something; a failed run that
-must look failed; and reconcile-everything, gate-don't-fix. The last one matters most — the
-quality layer only ever raises or warns. A check that quietly repairs its own finding is a
-check nobody can audit.
+on the fact, because redundancy is only worth it when it buys something; Streamlit instead of
+Power BI, which puts the dashboard in the repository at the cost of not demonstrating DAX;
+and reconcile-everything, gate-don't-fix. The last one matters most — the quality layer only
+ever raises or warns. A check that quietly repairs its own finding is a check nobody can
+audit.
 
-## Slide 9 — Dashboard (1:05)
+*(The teardown decision, D24, is not on this slide — the previous one was about nothing else.
+If asked why it is missing, that is the answer.)*
+
+## Slide 9 — KPIs and the trend (0:55)
+
+Four numbers first: 1,093,371 reviews in the fact table, an average of 4.299, 84% would
+recommend, 2,351 of the 8,494 catalogue products carry a review. Those are the dashboard's
+KPI row, queried live.
+
+Then fifteen years of it. Volume climbs for twelve years to 23,917 reviews in April 2020 and
+then settles — it does not fall. The rating line dips to 4.12 on the rolling average around
+2020 and recovers to 4.34 by 2022. That dip is real, and it is four hundredths of a star:
+worth showing, not worth building a story on.
+
+The last bar is deliberately dimmed. March 2023 ends on the 21st, and drawn like the others
+it reads as a collapse in demand — which would be the chart lying about a partial month. The
+same flag lives in the view, as `is_partial_month`.
+
+This figure is generated from `vw_review_volume_by_month`, the same view the dashboard reads.
+
+## Slide 10 — Price vs satisfaction (0:50)
 
 The headline result: price does not predict satisfaction, at least not linearly. Ratings
 climb from 4.238 under $15 to 4.334 at $50–100, then fall back to 4.271 above $100 — an
