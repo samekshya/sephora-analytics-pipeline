@@ -196,30 +196,33 @@ body { font-family: var(--font-body); color: var(--ink); }
 }
 
 .kicker {
-    font-size: 17px;
+    font-size: 16px;
     font-weight: 700;
     letter-spacing: 0.22em;
     text-transform: uppercase;
     color: var(--red);
 }
 
+/* Type runs a step smaller than a slide deck usually would, so the diagrams
+   get the space instead. The figures are the argument on the schema and
+   architecture slides; the prose beside them is support. */
 h2 {
     font-family: var(--font-display);
-    font-size: 60px;
+    font-size: 53px;
     font-weight: 700;
     font-optical-sizing: none;
     font-variation-settings: 'opsz' 14;
     line-height: 1.08;
     letter-spacing: -0.005em;
-    margin-top: 14px;
+    margin-top: 12px;
 }
 
 /* One-sentence framing line under the title. */
 .lede {
-    font-size: 24px;
+    font-size: 21px;
     line-height: 1.5;
     color: var(--muted);
-    margin-top: 16px;
+    margin-top: 14px;
     max-width: 1400px;
 }
 
@@ -235,8 +238,8 @@ h2 {
     flex: 1;
     min-height: 0;
     display: flex;
-    gap: 54px;
-    margin-top: 40px;
+    gap: 42px;
+    margin-top: 34px;
 }
 
 /* Columns centre their content vertically, so a short column does not leave a
@@ -275,7 +278,9 @@ h2 {
     background: var(--white);
     border: 1px solid var(--line);
     border-radius: 16px;
-    padding: 22px;
+    /* Tight padding on purpose: every pixel of the card that is not the
+       diagram is a pixel the diagram does not get. */
+    padding: 12px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -308,11 +313,11 @@ h2 {
     padding-top: 5px;
 }
 
-.point h4 { font-size: 23px; font-weight: 600; line-height: 1.3; }
+.point h4 { font-size: 21px; font-weight: 600; line-height: 1.3; }
 
 .point p {
-    font-size: 19px;
-    line-height: 1.52;
+    font-size: 17px;
+    line-height: 1.5;
     color: var(--muted);
     margin-top: 5px;
 }
@@ -324,8 +329,8 @@ code, .mono { font-family: var(--font-mono); font-size: 0.92em; }
 /* The narrative slide carries only three points against a full-height column,
    so it sets them a step larger. It is read from the back of the room, not
    scanned like the reference slides. */
-.points.lead .point h4 { font-size: 26px; }
-.points.lead .point p { font-size: 21px; margin-top: 7px; }
+.points.lead .point h4 { font-size: 23px; }
+.points.lead .point p { font-size: 19px; margin-top: 7px; }
 
 /* Card — a bordered white panel. */
 .card {
@@ -348,10 +353,10 @@ code, .mono { font-family: var(--font-mono); font-size: 0.92em; }
 .statgrid { display: grid; gap: 20px; }
 .stat { background: var(--white); border: 1px solid var(--line); border-radius: 14px;
     padding: 22px 24px; }
-.stat .v { font-family: var(--font-display); font-size: 46px; font-weight: 700;
+.stat .v { font-family: var(--font-display); font-size: 41px; font-weight: 700;
     font-optical-sizing: none; font-variation-settings: 'opsz' 14;
     line-height: 1; letter-spacing: -0.005em; }
-.stat .k { font-size: 16px; color: var(--muted); margin-top: 10px; line-height: 1.35; }
+.stat .k { font-size: 15px; color: var(--muted); margin-top: 10px; line-height: 1.35; }
 .stat.red .v { color: var(--red); }
 
 /* Small pill labels. */
@@ -504,42 +509,40 @@ body.editing [data-edit]:focus { outline: 2px solid var(--red); outline-offset: 
     <div class="inner">
         <div class="reveal">
             <div class="kicker" data-edit>The problem</div>
-            <h2 data-edit>There is no good way to compare what actually works</h2>
+            <h2 data-edit>Plenty of data, but no simple way to compare it</h2>
             <div class="rule"></div>
         </div>
 
-        <!-- Hangs from the top rather than centring: with only three points and
-             one card the columns are short, and centring them left a void
-             between the rule and the first line that no other slide has. -->
-        <div class="body reveal" style="align-items: flex-start;">
+        <!-- Centred, not top-hung. The copy here is deliberately brief, so
+             top-alignment left the whole lower third empty; centring splits
+             that slack above and below and reads as breathing room. -->
+        <div class="body reveal">
             <!-- Left: what is wrong today -->
             <div class="col" style="flex: 1.15;">
-                <div class="points lead" style="gap: 68px;">
+                <div class="points lead" style="gap: 96px;">
                     <div class="point">
                         <div class="n">01</div>
                         <div>
-                            <h4 data-edit>You can read one product page at a time</h4>
-                            <p data-edit>1.09&nbsp;million reviews across 8,494 products sit in flat
-                            files. Nothing lets you rank a brand against its category, or a
-                            category against the rest of the catalogue.</p>
+                            <h4 data-edit>The data was spread across six files</h4>
+                            <p data-edit>The product information was in one file, while more than
+                            one million reviews were spread across five other files.</p>
                         </div>
                     </div>
                     <div class="point">
                         <div class="n">02</div>
                         <div>
-                            <h4 data-edit>A star rating without context is not an answer</h4>
-                            <p data-edit>4.3 stars means nothing until you can hold price band,
-                            skin type and review volume steady. A product with 12 reviews
-                            and one with 130,000 sit side by side, weighted the same.</p>
+                            <h4 data-edit>The data was not ready to use</h4>
+                            <p data-edit>The files contained duplicate reviews, inconsistent values
+                            and missing information that needed to be checked.</p>
                         </div>
                     </div>
                     <div class="point">
                         <div class="n">03</div>
                         <div>
-                            <h4 data-edit>“Wanted” and “liked” are different signals</h4>
-                            <p data-edit><code>loves_count</code> is recorded before purchase and the
-                            rating after it. Nothing separates them, so the most marketed
-                            product reads as the best product.</p>
+                            <h4 data-edit>There was no simple way to compare everything</h4>
+                            <p data-edit>A large amount of review data was available, but there was
+                            no analytical platform to compare products, brands and categories
+                            side by side.</p>
                         </div>
                     </div>
                 </div>
@@ -548,11 +551,11 @@ body.editing [data-edit]:focus { outline: 2px solid var(--red); outline-offset: 
             <!-- Right: the answer, and who it serves -->
             <div class="col" style="flex: 0.85;">
                 <div class="card blush" style="flex: none;">
-                    <div class="kicker" style="color: var(--red);" data-edit>What this project builds</div>
-                    <p style="font-size: 23px; line-height: 1.5; margin-top: 14px;" data-edit>
-                        A warehouse where every one of those comparisons is a single
-                        query, and a dashboard where the filters <em>are</em> the query —
-                        not a view applied after the fact.
+                    <div class="kicker" style="color: var(--red);" data-edit>What I built</div>
+                    <p style="font-size: 21px; line-height: 1.5; margin-top: 14px;" data-edit>
+                        A pipeline that brings the files together, cleans and checks the
+                        data, stores it in a data warehouse, and shows useful results in
+                        a dashboard.
                     </p>
                 </div>
 
@@ -606,16 +609,16 @@ body.editing [data-edit]:focus { outline: 2px solid var(--red); outline-offset: 
                 <div class="card" style="flex: 1.25;">
                     <div class="kicker" style="color: var(--muted);" data-edit>What profiling found — 14 checks</div>
                     <div class="points" style="gap: 15px; margin-top: 20px;">
-                        <div class="point"><div class="n">·</div><div><p style="color: var(--ink); font-size: 19px;" data-edit>
+                        <div class="point"><div class="n">·</div><div><p style="color: var(--ink); font-size: 17.5px;" data-edit>
                             <b>1,040 duplicate reviews</b> on (author, product, date) — but 5,525 on
                             (author, product), so the difference is legitimate re-reviews.</p></div></div>
-                        <div class="point"><div class="n">·</div><div><p style="color: var(--ink); font-size: 19px;" data-edit>
+                        <div class="point"><div class="n">·</div><div><p style="color: var(--ink); font-size: 17.5px;" data-edit>
                             <b>Two values that were not values</b>: <code>Grey</code> and <code>gray</code> are one
                             colour, 4,859 rows; <code>notSureST</code> is “not sure”, not a skin tone.</p></div></div>
-                        <div class="point"><div class="n">·</div><div><p style="color: var(--ink); font-size: 19px;" data-edit>
+                        <div class="point"><div class="n">·</div><div><p style="color: var(--ink); font-size: 17.5px;" data-edit>
                             <b>Nulls that are undefined, not missing</b>: <code>helpfulness</code> is null exactly
                             when feedback count is 0 — so it is never imputed.</p></div></div>
-                        <div class="point"><div class="n">·</div><div><p style="color: var(--ink); font-size: 19px;" data-edit>
+                        <div class="point"><div class="n">·</div><div><p style="color: var(--ink); font-size: 17.5px;" data-edit>
                             <b>A usable idempotency key</b>: <code>(source_row_id, product_id)</code> collides
                             0 times across all five files, so re-running a load cannot duplicate a row.</p></div></div>
                     </div>
@@ -624,7 +627,7 @@ body.editing [data-edit]:focus { outline: 2px solid var(--red); outline-offset: 
                 <div class="card black" style="flex: 0.75; display: flex; flex-direction: column; justify-content: center;">
                     <div class="kicker" data-edit>After cleaning</div>
                     <div style="font-family: var(--font-display); font-size: 72px; font-weight: 700; font-optical-sizing: none; font-variation-settings: 'opsz' 14; line-height: 1; margin-top: 18px;">1,093,371</div>
-                    <p style="font-size: 19px; line-height: 1.5; margin-top: 16px;" data-edit>
+                    <p style="font-size: 17.5px; line-height: 1.5; margin-top: 16px;" data-edit>
                         reviews carried forward — 1,040 duplicates removed, 1,030,753 cells
                         whitespace-trimmed, 0 unparseable dates, and <b style="color:#fff;">not one column
                         dropped</b>: every source column still reaches the raw layer.
@@ -648,7 +651,7 @@ body.editing [data-edit]:focus { outline: 2px solid var(--red); outline-offset: 
         </div>
 
         <div class="body reveal">
-            <div class="col" style="flex: 2;">
+            <div class="col" style="flex: 2.6;">
                 <div class="figure"><img src="assets/oltp_er.svg" alt="Entity relationship diagram of the 3NF schema"></div>
                 <div class="figcap" data-edit>9 tables in the <span class="mono">3nf</span> schema. Row counts are measured after load, not estimated.</div>
             </div>
@@ -709,7 +712,7 @@ body.editing [data-edit]:focus { outline: 2px solid var(--red); outline-offset: 
         </div>
 
         <div class="body reveal">
-            <div class="col" style="flex: 1.45;">
+            <div class="col" style="flex: 1.95;">
                 <div class="figure"><img src="assets/star_schema.svg" alt="Star schema: fact_reviews with five dimensions"></div>
                 <div class="figcap" data-edit>Grain of <span class="mono">fact_reviews</span>: one row per review. Four indexed foreign keys, no others.</div>
             </div>
@@ -771,7 +774,7 @@ body.editing [data-edit]:focus { outline: 2px solid var(--red); outline-offset: 
         </div>
 
         <div class="body reveal" style="flex-direction: column; gap: 26px; margin-top: 30px;">
-            <div class="figure" style="padding: 16px 22px;">
+            <div class="figure" style="padding: 10px 14px;">
                 <img src="assets/architecture.svg" alt="End-to-end architecture from CSV through OLTP and the warehouse to Streamlit">
             </div>
 
@@ -818,7 +821,7 @@ body.editing [data-edit]:focus { outline: 2px solid var(--red); outline-offset: 
         </div>
 
         <div class="body reveal" style="flex-direction: column; gap: 24px; margin-top: 30px;">
-            <div class="figure dark" style="flex: none; height: 430px; padding: 18px;">
+            <div class="figure dark" style="flex: none; height: 470px; padding: 12px;">
                 <img src="assets/dag.png" alt="The 15-task Airflow DAG graph as rendered by Airflow">
             </div>
             <div class="figcap" style="margin-top: -12px;" data-edit>
@@ -876,8 +879,8 @@ body.editing [data-edit]:focus { outline: 2px solid var(--red); outline-offset: 
         <div class="body reveal" style="display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 26px;">
             <div class="card center">
                 <div class="kicker" style="color: var(--red);">D2 · Modelling</div>
-                <h4 style="font-size: 27px; font-weight: 600; margin-top: 12px;" data-edit>A junk dimension, not a profile on the customer</h4>
-                <p style="font-size: 18px; line-height: 1.55; color: var(--muted); margin-top: 12px;" data-edit>
+                <h4 style="font-size: 24px; font-weight: 600; margin-top: 12px;" data-edit>A junk dimension, not a profile on the customer</h4>
+                <p style="font-size: 16.5px; line-height: 1.55; color: var(--muted); margin-top: 12px;" data-edit>
                     The obvious design hangs skin tone and type off <span class="mono">dim_customer</span>. Measured:
                     4.47% of authors changed at least one attribute, across 13.69% of reviews — so
                     that design mis-tags one review in seven, with no constraint violated and
@@ -890,8 +893,8 @@ body.editing [data-edit]:focus { outline: 2px solid var(--red); outline-offset: 
                  likely to challenge, and it appeared nowhere in the deck. -->
             <div class="card center">
                 <div class="kicker" style="color: var(--red);">D18 · Tooling</div>
-                <h4 style="font-size: 27px; font-weight: 600; margin-top: 12px;" data-edit>Streamlit instead of Power BI</h4>
-                <p style="font-size: 18px; line-height: 1.55; color: var(--muted); margin-top: 12px;" data-edit>
+                <h4 style="font-size: 24px; font-weight: 600; margin-top: 12px;" data-edit>Streamlit instead of Power BI</h4>
+                <p style="font-size: 16.5px; line-height: 1.55; color: var(--muted); margin-top: 12px;" data-edit>
                     The dashboard lives in the repository: versioned, diffable, smoke-tested in CI,
                     reproducible with one command. The cost is real and worth stating plainly —
                     <b style="color: var(--ink);">no DAX and no Power BI model are demonstrated</b>.
@@ -900,8 +903,8 @@ body.editing [data-edit]:focus { outline: 2px solid var(--red); outline-offset: 
 
             <div class="card center">
                 <div class="kicker" style="color: var(--red);">D11 · Warehouse</div>
-                <h4 style="font-size: 27px; font-weight: 600; margin-top: 12px;" data-edit>No brand_key on the fact table</h4>
-                <p style="font-size: 18px; line-height: 1.55; color: var(--muted); margin-top: 12px;" data-edit>
+                <h4 style="font-size: 24px; font-weight: 600; margin-top: 12px;" data-edit>No brand_key on the fact table</h4>
+                <p style="font-size: 16.5px; line-height: 1.55; color: var(--muted); margin-top: 12px;" data-edit>
                     Brand is functionally determined by product, so a copy on a 1.09M-row fact adds
                     no information and creates a way for the two to disagree after a bad load.
                     Brand analysis joins through <span class="mono">dim_product</span>.
@@ -910,8 +913,8 @@ body.editing [data-edit]:focus { outline: 2px solid var(--red); outline-offset: 
 
             <div class="card center">
                 <div class="kicker" style="color: var(--red);">D19 &amp; D21 · ETL</div>
-                <h4 style="font-size: 27px; font-weight: 600; margin-top: 12px;" data-edit>Reconcile every row; gate, don’t fix</h4>
-                <p style="font-size: 18px; line-height: 1.55; color: var(--muted); margin-top: 12px;" data-edit>
+                <h4 style="font-size: 24px; font-weight: 600; margin-top: 12px;" data-edit>Reconcile every row; gate, don’t fix</h4>
+                <p style="font-size: 16.5px; line-height: 1.55; color: var(--muted); margin-top: 12px;" data-edit>
                     Every dropped row is counted against a named reason, zeros included, and an
                     unexplained gap raises. The quality layer only ever raises or warns — it never
                     repairs data, because a check that quietly fixes its own finding is a check
@@ -946,7 +949,7 @@ body.editing [data-edit]:focus { outline: 2px solid var(--red); outline-offset: 
             </div>
 
             <div style="display: flex; gap: 34px; flex: 1; min-height: 0;">
-                <div class="figure dark" style="flex: 1.65;"><img src="assets/chart_trend.svg" alt="Monthly review volume rising to a 2020 peak, with average rating dipping in 2020 and recovering"></div>
+                <div class="figure dark" style="flex: 2;"><img src="assets/chart_trend.svg" alt="Monthly review volume rising to a 2020 peak, with average rating dipping in 2020 and recovering"></div>
 
                 <div class="col" style="flex: 0.85; justify-content: flex-start;">
                     <div class="points" style="gap: 22px;">
@@ -997,24 +1000,25 @@ body.editing [data-edit]:focus { outline: 2px solid var(--red); outline-offset: 
         <div class="body reveal" style="gap: 30px;">
             <!-- Cropped to the plot area from the running dashboard, so the charts
                  read at size; the card headings are restated here as slide labels. -->
-            <!-- The two figures are pinned to the same aspect ratio so the cards
-                 match exactly; the source crops differ by a couple of percent,
-                 which showed as a ragged bottom edge. The note sits beneath both
-                 rather than in the bullet column, so the space under the charts
-                 carries something instead of reading as a hole. -->
-            <div class="col" style="flex: 2.2; justify-content: flex-start; gap: 26px;">
-                <div style="display: flex; gap: 30px; align-items: flex-start;">
+            <!-- These two are fixed-aspect crops, so the way to make them bigger
+                 is width, not height: letting the cards stretch vertically just
+                 letterboxes the image inside a taller black box. The column is
+                 widened instead and pinned back to the source 3:2, and the
+                 slack is spread with space-between so it does not pool into a
+                 void under the note. -->
+            <div class="col" style="flex: 3; justify-content: space-between; gap: 22px;">
+                <div style="display: flex; gap: 28px; align-items: flex-start;">
                     <div style="flex: 1; min-width: 0;">
-                        <h4 style="font-size: 22px; font-weight: 600; margin-bottom: 14px;" data-edit>Average rating by price band</h4>
+                        <h4 style="font-size: 20px; font-weight: 600; margin-bottom: 12px;" data-edit>Average rating by price band</h4>
                         <div class="figure dark" style="flex: none; aspect-ratio: 3 / 2;"><img src="assets/chart_price_rating.png" alt="Average rating by price band, peaking at the $50-100 band"></div>
                     </div>
                     <div style="flex: 1; min-width: 0;">
-                        <h4 style="font-size: 22px; font-weight: 600; margin-bottom: 14px;" data-edit>Rating spread — lower means more agreement</h4>
+                        <h4 style="font-size: 20px; font-weight: 600; margin-bottom: 12px;" data-edit>Rating spread — lower means more agreement</h4>
                         <div class="figure dark" style="flex: none; aspect-ratio: 3 / 2;"><img src="assets/chart_price_spread.png" alt="Standard deviation of rating by price band, tightest at the $50-100 band"></div>
                     </div>
                 </div>
                 <div class="card blush" style="flex: none; padding: 24px 28px;">
-                    <p style="font-size: 19px; line-height: 1.5;" data-edit>
+                    <p style="font-size: 17.5px; line-height: 1.5;" data-edit>
                         Both charts are live reads. Every filter on the dashboard is a
                         <b>SQL parameter</b>, not a dataframe filter — a client-side filter
                         would look identical on screen and be a different claim.</p>
