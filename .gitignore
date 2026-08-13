@@ -23,6 +23,8 @@ reference/
 # --- Airflow ---
 dags/__pycache__/
 logs/
+# Bind-mount point created by docker-compose-airflow.yml; always empty here.
+config/
 airflow.db
 airflow.cfg
 airflow-webserver.pid
