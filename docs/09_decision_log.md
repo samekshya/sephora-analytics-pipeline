@@ -462,7 +462,11 @@ was dropped for this reason" indistinguishable from "this reason was never check
 
 ## D20. A failure watcher task, because `all_done` cleanup masked failures
 
-**Date**: 2026-08-08
+**Date**: 2026-08-08 · **Superseded by [D24](#d24-cleanup_staging-is-a-teardown-not-a-watched-task) on 2026-08-12**
+
+> The bug described here is real and the fix worked. It was later replaced by a smaller
+> mechanism that achieves the same guarantee. The entry is kept because the bug is the reason
+> the current design exists, and because the reasoning below is still the reasoning.
 
 **Decision**: `watch_for_failure`, `trigger_rule="one_failed"`, `retries=0`, wired downstream
 of all 15 other tasks and the DAG's only leaf.
@@ -541,6 +545,11 @@ the dashboard and this file disagree, the dashboard is wrong.**
 
 ## D23. Dashboard controls are query parameters, and the quality panel recomputes
 
+> **Narrowed by [D25](#d25-one-page-one-control-and-a-validated-palette) on 2026-08-12.**
+> The principle stands and the panel is unchanged, but the dashboard was reduced to a
+> single page with **one** control, so the claim below is now demonstrated by the brand
+> review floor alone rather than by five separate widgets.
+
 **Date**: 2026-08-08
 
 **Decision**: every interactive control on the dashboard binds its value into the SQL rather
@@ -585,6 +594,190 @@ One number in the panel is labelled **not live**: the 1,040 duplicates `clean.py
 before anything reached Postgres (D4). Neither database can be queried for it. It is stated
 and labelled rather than omitted, because the panel's claim is about what happened to every
 row — not only the parts that are convenient to query.
+
+---
+
+## D24. `cleanup_staging` is a teardown, not a watched task
+
+**Date**: 2026-08-12 · supersedes [D20](#d20-a-failure-watcher-task-because-all_done-cleanup-masked-failures)
+
+**Decision**: mark `cleanup_staging` with `.as_teardown()` and delete `watch_for_failure`
+entirely. The DAG goes from **16 tasks / 33 edges to 15 tasks / 21 edges**.
+
+**Why**: D20's watcher solved the right problem the expensive way. Because `trigger_rule`
+evaluates *direct* upstreams only, the watcher had to be wired downstream of every single
+task — 15 of the DAG's 33 edges existed solely to let one task observe the others. Nearly
+half the graph was failure plumbing, and every new task added a wiring obligation that,
+if forgotten, silently stopped failures being reported.
+
+Airflow's teardown feature addresses the same situation structurally. From
+`DagRun._tis_for_dagrun_state`:
+
+```python
+def is_effective_leaf(task):
+    for down_task_id in task.downstream_task_ids:
+        down_task = dag.get_task(down_task_id)
+        if not down_task.is_teardown or down_task.on_failure_fail_dagrun:
+            return False          # a non-ignorable downstream: not a leaf
+    return not task.is_teardown or task.on_failure_fail_dagrun
+```
+
+Marking cleanup a teardown makes it *ignorable*, which promotes
+`load_fact_from_staging` to sole effective leaf. Cleanup still runs after a failure, and it
+can no longer report success on the run's behalf. Failure propagation through
+`upstream_failed` then does the job the watcher's 15 edges were doing — verified by
+`test_every_task_can_fail_the_run`, which asserts every task has a path to the leaf.
+
+**The trap, recorded so it is not "fixed" later**: `on_failure_fail_dagrun=True` looks like
+the right way to make cleanup's *own* failure count. It is not. It makes cleanup
+non-ignorable, which makes it the sole effective leaf again and **reinstates D20's bug
+exactly**. The flag must stay `False`, and `test_cleanup_does_not_fail_the_dagrun` pins it
+there. The trade is deliberate and asymmetric: a failed cleanup strands batch-scoped rows,
+which is hygiene; a masked pipeline failure is correctness.
+
+**Verified by failure injection**, not by reading the docs. With `extract_fact_to_staging`
+forced to `failed`:
+
+| | |
+|---|---|
+| `transform` / `quality` / `load_fact` | `upstream_failed` |
+| `cleanup_staging` | **success** — still cleaned up |
+| DAG run | **failed** |
+
+A green cleanup beside a red run is precisely the case that used to report success.
+
+**A latent race this exposed.** The first injection run left **513,606 rows** in three
+staging tables carrying that run's own `batch_id`. Cause: `cleanup` had `load_fact` as its
+only upstream — in *both* the old and new designs. A normal run hides it, because `load_fact`
+always finishes after the dimensions. But when the fact chain short-circuits to
+`upstream_failed`, cleanup fires immediately, finds empty tables, deletes nothing, and the
+dimension branches stage their rows afterwards. Cleanup now waits on every staging **writer**
+(`load_product`, `load_customer`, `load_reviewer_profile`, `load_fact`). Those extra edges
+cost nothing structurally — each of those tasks still has `transform_fact` downstream, so
+cleanup stays ignorable and the leaf set is unchanged. Re-verified: all six staging tables at
+0 after an injected failure. Pinned by `test_cleanup_waits_for_every_staging_writer`.
+
+---
+
+## D25. One page, one control, and a validated palette
+
+**Date**: 2026-08-12 · narrows [D23](#d23-dashboard-controls-are-query-parameters-and-the-quality-panel-recomputes)
+
+**Decision**: the dashboard is a **single scrolling page** with a small, deliberate set
+of controls, themed Sephora black / white / red.
+
+> **Revised the same day.** This entry originally landed with exactly **one** control
+> (the brand review floor), cutting five. Category- and product-level filtering was then
+> asked for and added back, giving **four**: category, brand review floor, brand, and a
+> product name search. The principle that survived is not "one control" — it is that
+> every control must **bind into SQL** and must have an **unambiguous scope**. The five
+> that were cut (date range, hype gap, price range, skin-group floor, and the old
+> whole-page category multiselect) are still gone. See *Scope* below.
+
+**Why one page**: two pages meant the five business questions were split across a
+navigation control, so answering "what did you find?" required knowing which page a
+finding lived on. A capstone dashboard is read once, in order, by someone who has
+never seen it. Scrolling is a better interface than navigating for that. Every
+section now states its finding **in words** under the heading, so the page is legible
+without reading a single chart.
+
+**Why one control**: the page previously carried a category multiselect, a date-range
+slider, a hype-gap slider, a price-range slider and a skin-group floor. Each was a
+genuine SQL parameter — that part of D23 was true and is preserved for the survivor —
+but five controls on a page nobody is going to operate is complexity for its own
+sake, and each one is a way for the demo to end up in a state that does not show the
+finding. The review floor stays because without it the "best brand" is whichever has
+a single 5-star review; it still binds in as `WHERE review_count >= %s`.
+
+**What this costs, stated plainly**: three of the tests that asserted individual
+sliders were live are gone with the sliders. The data-quality panel half of D23 is
+untouched, and the surviving controls are each covered by a test that moves one and
+requires the corresponding caption to change.
+
+### Scope — the part that makes a partial filter honest
+
+A category filter cannot scope every chart, and pretending otherwise is the real
+hazard. Of the views the page reads:
+
+| Section | Responds to Category? | Why |
+|---|---|---|
+| Brands | **yes** | via the new `vw_rating_by_brand_category` |
+| Categories · Hype · Skin type · Product explorer | **yes** | their views carry `secondary_category` |
+| Volume/rating trend · Price bands | **no** | `vw_review_volume_by_month` and `vw_rating_by_price_band` aggregate the category column away |
+
+The two that cannot respond are **labelled *all categories* in their card titles**, a
+sidebar note lists exactly what the filter scopes, and selecting a subset raises a
+banner naming the categories in force. A filter that silently does nothing to two
+sections while appearing to work is worse than no filter.
+
+**`vw_rating_by_brand_category` exists specifically for this.** `vw_rating_by_brand`
+groups by brand alone, so a category predicate applied to it is a no-op — the brand
+chart would have stayed catalogue-wide while the page claimed to be filtered. The new
+view is a full-population view and reconciles to `fact_reviews` at 1,093,371 like the
+rest. The dashboard re-aggregates it to brand level with a **review-count-weighted
+mean**: averaging the per-category averages would weight a 12-review category the same
+as a 300,000-review one.
+
+**The product-level filters live in their own section**, not the sidebar. Their brand
+picker and name search sit directly above the only table they scope, so there is never
+a question about what they affect — the ambiguity the category filter has to explain
+with a note.
+
+### Other filters that were considered
+
+Recorded so the absence is a decision rather than an oversight:
+
+| Filter | Cost | Verdict |
+|---|---|---|
+| Price range | Free — `price_usd` is on `vw_hype_vs_reality` | Available; the price-band section already answers BQ3 more directly |
+| Rating / recommend threshold | Free on the product view | Selecting on the outcome invites survivorship reasoning |
+| Product flags (`sephora_exclusive`, `limited_edition`, …) | Needs a view; they sit on `dim_product` | Genuinely interesting, no business question attached |
+| Date range | Needs a category × month view | Cut — the trend chart is the whole point of BQ5 and shortening it removes the finding |
+| Skin tone / type as a *filter* | Needs a fact-level predicate on the junk dimension | It is a **dimension of the answer** in BQ4, not a filter on it |
+| Tertiary category | Free — already on `dim_product` | 174 triples is too many for a usable control |
+
+### The palette was validated, not chosen
+
+Sephora's colours are black, white and the brand red. Every value was run through the
+data-viz validator against the actual `#151515` card surface rather than picked by eye:
+
+| Slot | Value | Result |
+|---|---|---|
+| Categorical pair | `#F5405F` red · `#5589C7` blue | worst-pair CVD ΔE **16.1**, normal-vision **29.1** |
+| Ordinal ramp (5 price bands) | `#F7A8B8` → `#A81736` | monotone lightness, single hue (11° spread) |
+| Diverging midpoint | `#8A8781` | neutral, and still visible on black |
+
+Only **two** categorical slots exist, because the page never plots more than two
+series at once. A third warm hue (gold `#E9B44C`) was tried and **cut**: it failed
+deuteranope separation against the brand red at ΔE 4.2, which the validator caught and
+an eye would not have.
+
+### Three charts changed form, because the old ones misled
+
+This is the part worth defending. Most effects in this data are a tenth of a star, so
+the axis has to be truncated to show them — and **a truncated axis under bars lies**,
+because bar length is read from zero. On the old price chart, "Under $15" (4.2383) was
+drawn roughly six times shorter than "$50–100" (4.3335): a 2% difference rendered as
+600%. Category and skin-type bars had the same defect.
+
+All three became **position encodings** — a line across the ordered price bands, dot
+plots for category and skin type. Same truncation, now honest, and the price line
+shows the inverted U at a glance instead of implying it.
+
+Review length became **small multiples**. The 1-star share (3–8%) and 5-star share
+(61–67%) live on different scales, so grouped on one axis the 5-star bars towered and
+the 1-star decline — half the finding — flattened into a strip along the baseline. A
+second y-axis is the usual fix and is worse: two arbitrary scales invent a
+relationship. Separate panels let each tail be read on its own scale.
+
+### A wrong claim the redesign caught
+
+Rendering the price chart exposed that **`rating_stddev` is not monotonic**. It falls
+1.2211 → 1.0996 through `$50–100` and then **widens again to 1.1366** above $100. This
+document, `README.md` and `CLAUDE.md` all asserted it "falls steadily as price rises",
+each of them directly beneath a table showing otherwise. Corrected everywhere. The
+accurate finding is stronger: **$50–100 is the sweet spot on both measures** — best
+rated *and* most agreed upon — and the priciest band regresses on both at once.
 
 ---
 

@@ -16,22 +16,21 @@ actually stands right now*.
 
 **Stages 1–11 of the pipeline are built, run, and verified.** The warehouse holds
 1,093,371 fact rows, Airflow runs both modes green, the dashboard works, 51 tests
-pass, and the screenshots plus eight-minute deck are complete. Final validation
-passed and the completed dashboard branch is merged into local `main`.
+pass, and the eight-minute deck is complete. The DAG was then simplified from 16
+tasks / 33 edges to **15 / 21** by replacing the failure watcher with a teardown
+(**D24**), which is verified by an injected failure and fixed a latent race.
 
 ### Where the code is right now
 
 | | |
 |---|---|
-| Current branch | `main` at `affaf7a` — completion merge recorded locally |
-| Dashboard branch | `dashboard-polish` at `2113a23` — retained as the completed phase branch |
-| Remote state | `origin/main` remains at `90edfab`; push `dashboard-polish` and `main` after remote-write approval |
-| Completion pass | **Complete locally** — documentation, live DAG proof, screenshots, deck, final validation, and merge are done |
-
-The completed dashboard work is the source of **D23** and the 10th analytics
-view. It has already passed the host integration suite; this completion pass
-adds fresh runtime evidence and presentation assets without changing the
-pipeline's established behavior.
+| Current branch | `dag-simplification` — the D24 work, **not yet merged** |
+| `main` | `e2a4323` — the completion merge, local only |
+| Remote state | `origin/main` still at `90edfab`; **nothing since has been pushed** |
+| Deck | **`presentation/sephora_pipeline_deck.html` — nine slides, current, the one to present.** Opens in a browser, no build step. Embeds the generated SVG diagrams, the DAG graph, and two cropped dashboard charts |
+| Diagrams | `docs/diagrams/build_diagrams.py` generates architecture, OLTP ER and star schema as SVG (+ PNG rasters for Markdown). Used by both the README and the deck — see that folder's README to regenerate |
+| Screenshots | The three the deck uses are **current** (`airflow_dag_graph`, `chart_price_rating`, `chart_price_spread`). The original four are **still STALE** and now feed only `build_deck.ps1` |
+| PowerPoint | `build_deck.ps1` → `presentation/output/*.pptx|pdf` is **superseded**: eight slides, pre-D24/D25, stale captures. Kept as the path to an editable Office file if one is ever required |
 
 ### Working conventions the user expects
 
@@ -53,15 +52,16 @@ clean.py            stage 2 — data/raw/*.csv → data/processed/*.csv, drops r
 ingest.py           stage 3 — COPY data/processed → raw schema, asserts counts against clean.py
 pipeline.py         local runner: --mode full | historical | incremental
 etl/                extract · transform · reconcile · quality · load · staging  (2-space indent)
-dags/               sephora_dw_pipeline_staged.py — the 16-task DAG
+dags/               sephora_dw_pipeline_staged.py — the 15-task DAG
 sql/init/           create both databases
 sql/oltp/           01_raw_schema.sql + 15 timestamped migrations (raw → 3nf → staging)
 sql/datawarehouse/  7 numbered migrations — 5 dims + fact_reviews
-sql/analytics/views/  10 views, the dashboard's only read surface
+sql/analytics/views/  11 views, the dashboard's only read surface
 sql/validation/     dashboard_checks.sql — read-only assertions, changes nothing (D22)
-dashboard/app.py    Streamlit, 2 pages, ~1,075 lines, live Postgres connection
+dashboard/app.py    Streamlit, ONE page, Sephora theme, live Postgres connection (D25)
 tests/              unit/ + integration/ + test_dag_structure.py + verify_dag_in_container.py
-docs/               01–11 plus README index and 4 verified runtime screenshots
+docs/               01–11 + README index; guide/ holds the 12-page PDF walkthrough; diagrams/ generates the 3 diagrams; screenshots/
+presentation/       sephora_pipeline_deck.html — the 9-slide deck; assets/, speaker_notes.md
 setup.ps1           11 resumable steps, end to end from empty Docker to loaded warehouse
 reference/          the course's reference project — the format constraint, see section 1
 ```
@@ -92,9 +92,15 @@ defaults. Source CSVs are **not** in git — `data/README.md` says where to get 
 
 ### What remains — the actual to-do list
 
-The implementation and local handoff are complete. The only remaining repository
-operation is to push `dashboard-polish` and `main` to the configured GitHub remote
-after explicit remote-write approval.
+1. **Merge `dag-simplification`**, then push. `origin` is 14+ commits behind.
+2. Optional: re-capture the four original screenshots (see `docs/screenshots/README.md`).
+   They no longer block the presentation — the HTML deck does not read them — but
+   `build_deck.ps1` still does, and `failure_proof_v2_20260812` (a **failed** run with
+   `cleanup_staging` green) remains the most persuasive evidence in the set.
+3. Optional: `docs/07_dashboard_insights.md` predates the review-length view, and
+   `docs/03_architecture.md` predates the generated architecture diagram.
+4. If the numbers ever move, regenerate the PDF guide — `docs/guide/README.md` has the
+   one-line Chrome command — and re-run `build_diagrams.py`, which has the row counts on it.
 
 ### Things that look like bugs and are not
 
@@ -105,8 +111,20 @@ after explicit remote-write approval.
 - **`--mode historical` does not reset a full warehouse.** There is no truncate
   anywhere and every load is `ON CONFLICT DO NOTHING`. To reset for a demo:
   `DELETE FROM dw.fact_reviews WHERE submission_date >= '2023-01-01'`.
-- **`watch_for_failure` showing as skipped (pale)** in a green Airflow run is the
-  intended state — it is a `one_failed` watcher (D20).
+- **`historical` is missing from the Airflow trigger dropdown on purpose.** The
+  DAG offers `TRIGGERABLE_LOAD_MODES` — full and incremental — because
+  historical is a baseline-rebuild tool, not something you orchestrate, and
+  against an already-full warehouse it inserts nothing and reads as a broken
+  run. It is still in `etl.extract.LOAD_MODES` and still runs locally with
+  `py pipeline.py --mode historical`.
+- **`cleanup_staging` showing green on a FAILED Airflow run** is the intended
+  state. It is a **teardown**: it runs after failures so staging is not stranded,
+  and Airflow excludes it from run-state calculation so it cannot report success
+  on the run's behalf (D24). Do not set `on_failure_fail_dagrun=True` to "improve"
+  this — that makes cleanup the sole effective leaf again and reinstates the
+  exact bug D20 was written about.
+- **A red run with no `failed` task** — look for `upstream_failed` (orange). Run
+  state comes from `load_fact_from_staging`, which inherits it.
 - **`helpfulness` nulls** are undefined, not missing (D5). Do not impute them.
 
 ---
@@ -174,7 +192,7 @@ recording a decision-log entry.
   > separate Sephora project at `D:\Data Projects\sephora-analytics-de-project`). This project
   > uses its own container on 5434 — never point it at 5432 or 5433.
 - **Apache Airflow 3.3.0** — Docker Compose, LocalExecutor, staged DAG, watermark incremental
-- **Streamlit + Plotly** — 2-page dashboard, live Postgres connection (D18; replaced Power BI)
+- **Streamlit + Plotly** — single-page dashboard, live Postgres connection (D18; replaced Power BI)
 - **SQL** — append-only numbered migrations
 
 ---
@@ -190,12 +208,12 @@ sephora_oltp ── raw schema       1:1 CSV mirror, loaded by ingest.py (COPY)
    │            3nf schema       9 normalized tables, FKs enforced
    │            staging schema   trimmed, analytics-ready subset
    ▼  etl/ package: extract → transform → reconcile → quality gate → load
-sephora_dw     dw schema — 5 dimensions + fact_reviews + 10 analytics views
+sephora_dw     dw schema — 5 dimensions + fact_reviews + 11 analytics views
    ▼
-Streamlit dashboard (2 pages, live connection)
+Streamlit dashboard (one page, live connection)
 ```
 
-Orchestrated by `dags/sephora_dw_pipeline_staged.py` (16 tasks) or run locally with
+Orchestrated by `dags/sephora_dw_pipeline_staged.py` (15 tasks) or run locally with
 `pipeline.py --mode full|historical|incremental`.
 
 Grain of `fact_reviews`: **one row per review.**
@@ -247,15 +265,16 @@ Indexes on all four fact FK columns. **No `brand_key` on the fact table** (D11).
 | 3. OLTP raw + 3NF + staging, `ingest.py` | **Done** — 15 migrations applied, reconciliation clean, 0 row gap end to end |
 | 4. DW star schema migrations | **Done** — 7 migrations, 5 dims + fact_reviews |
 | 5. ETL package + `pipeline.py` | **Done** — three named load modes (D17), row reconciliation (D19), severity-aware quality gate (D21) |
-| 6. Airflow staged DAG | **Done** — 16 tasks incl. the failure watcher (D20); historical and incremental runs both green |
-| 7. Analytics views | **Done** — 10 views (one uses window functions), split from validation SQL (D22) |
-| 8. Streamlit dashboard | **Done** — 2 pages, live connection, 3 slider-driven query params, live status strip and data-quality panel (D18, D23) |
-| 9. Tests | **Done** — 51 pytest passing + 11 DAG assertions verified in-container |
-| 10. Documentation | **Done** — `docs/01`–`11` + index; 23 decisions logged |
+| 6. Airflow staged DAG | **Done** — 15 tasks; cleanup is a teardown, replacing the failure watcher (D24, superseding D20); historical, incremental and an injected-failure run all verified |
+| 7. Analytics views | **Done** — 11 views (one uses window functions), split from validation SQL (D22); `vw_rating_by_brand_category` added so the dashboard category filter can scope the brand chart (D25) |
+| 8. Streamlit dashboard | **Done** — ONE page, validated Sephora palette, 4 query-bound controls (category · **brand** · brand review floor · product search — the first three in the sidebar), live KPI strip and data-quality panel (D18, D23, D25) |
+| 9. Tests | **Done** — 52 pytest passing + 11 DAG assertions verified in-container |
+| 10. Documentation | **Done** — `docs/01`–`11` + index; 24 decisions logged |
 | 11. Reproducibility | **Done** — `setup.ps1`, 11 resumable steps; `.env.example` with working defaults |
 | — Dashboard polish | **Done and merged** — status strip, 3 query-param controls, shareable Deep-dive URL, `vw_rating_by_review_length`, data-quality panel, shared page shape. Source of D23 |
-| — Presentation deck | **Done** — 8 timed slides; editable PowerPoint, PDF, embedded notes, and reproducible builder under `presentation/` |
-| — Screenshots | **Done** — 4 required live captures under `docs/screenshots/`, all visually inspected |
+| — Presentation deck | **Done** — `presentation/sephora_pipeline_deck.html`, 9 slides timed to 8:00, every slide rendered and visually inspected at 1600×900. Supersedes the 8-slide PowerPoint, which is kept and marked stale |
+| — Diagrams | **Done** — architecture, OLTP ER and star schema, generated by `docs/diagrams/build_diagrams.py` as SVG (deck) + PNG (Markdown). Wired into the README, replacing two Mermaid blocks |
+| — Screenshots | **Partly stale by design** — the 3 the deck uses are current; the original 4 feed only `build_deck.ps1`. `docs/screenshots/README.md` marks which is which |
 
 Stages 1–11 and all presentation deliverables are complete and verified against
 real runs; the numbers in section 7 come from those runs, not from estimates.
@@ -325,10 +344,12 @@ Fill in from actual runs. Never estimate here — if it isn't measured, leave it
 | **Quality fault injection** (`tests/unit/test_quality.py`) | 15 collected cases, all passing |
 | **Airflow, historical** | All tasks green; 1,043,868 fact rows. `load_fact_from_staging` SIGKILLed on the first attempt and succeeded after chunking (D15) |
 | **Airflow, incremental** | All tasks green in **22 seconds**; 49,503 rows → 1,093,371 total |
-| **Airflow completion verification (2026-08-12)** | `verification_historical_20260812`: success, 15 success + skipped watcher, **164s**. Controlled reset removed exactly 49,503 2023 rows; `verification_incremental_20260812` restored all rows in **27s**. Final fact count 1,093,371; watermark 2023-03-21; all 6 DAG staging tables empty |
-| **Staging cleanup** | All 6 staging tables at 0 rows after both runs (`trigger_rule="all_done"`) |
+| **Airflow verification, watcher design (2026-08-12)** | `verification_historical_20260812`: success, 15 success + skipped watcher, **164s**. `verification_incremental_20260812` restored 49,503 rows in **27s**. Superseded by the teardown runs below |
+| **Airflow verification, teardown design (2026-08-12, D24)** | `teardown_historical_20260812`: success, **134s**. Controlled reset removed exactly 49,503 2023 rows; `teardown_incremental_20260812` restored them in **22s**. Final fact count 1,093,371; watermark 2023-03-21; all 6 staging tables empty |
+| **Failure injection (2026-08-12, D24)** | `extract_fact_to_staging` forced to `failed`. Result: 3 tasks `upstream_failed`, `cleanup_staging` **success**, **DAG run FAILED** — a green cleanup beside a red run. First attempt stranded **513,606** staging rows through a pre-existing race (cleanup waited only on `load_fact`); after wiring cleanup to all 4 staging writers, the re-run left all 6 tables at **0** |
+| **Staging cleanup** | All 6 staging tables at 0 rows after every run, including the injected-failure run |
 | **Analytics views** | **10** views created; all 8 full-population views reconcile to 1,093,371 exactly (`vw_rating_by_skin_type` and `vw_hype_vs_reality` are deliberate subsets) |
-| **DAG structure** | 16 tasks; 11/11 assertions pass in-container (watcher is the only leaf, watches all 15 others) |
+| **DAG structure** | 15 tasks, 21 edges; 11/11 assertions pass in-container (`load_fact_from_staging` is the only effective leaf; every task has a propagation path to it) |
 | **Final test suite (2026-08-12)** | **51 passed**, 1 skipped locally (Airflow is verified separately in-container); 31 non-failing pandas DBAPI compatibility warnings |
 | **Migration idempotency** | All 22 migrations re-applied against a fully-loaded database with no error |
 | **Dashboard** | Both pages render via `AppTest`; KPI row equals `SELECT count(*), avg(rating) FROM dw.fact_reviews`. Each of the 3 Deep-dive sliders asserted live individually (hype gap 1,660 → 484 products, price 1,660 → 935, skin tones 12 → 14 at floor 0) |
@@ -339,7 +360,7 @@ Fill in from actual runs. Never estimate here — if it isn't measured, leave it
 | Finding | Detail |
 |---|---|
 | Overall | 1,093,371 reviews · avg rating **4.2990** · **83.99%** recommend |
-| **BQ3 — price vs satisfaction is an inverted U** | Under $15 **4.2383** → $15-30 4.2756 → $30-50 4.3055 → **$50-100 4.3335 (peak)** → $100+ **4.2708 (falls back)**. Rating variance also falls steadily as price rises (stddev 1.2211 → 1.0996) |
+| **BQ3 — price vs satisfaction is an inverted U** | Under $15 **4.2383** → $15-30 4.2756 → $30-50 4.3055 → **$50-100 4.3335 (peak)** → $100+ **4.2708 (falls back)**. Rating spread turns in the SAME band: stddev 1.2211 → 1.1861 → 1.1498 → **1.0996 ($50-100, tightest)** → 1.1366 ($100+, widens again). $50-100 is the sweet spot on both measures. **Not** a monotone fall — an earlier note here and in docs/07 and README claimed it was, contradicting their own tables |
 | BQ1a — best brands (≥500 reviews) | MARA 4.8608 · DAMDAM 4.7394 · Dr. Lara Devgan 4.7164 |
 | BQ1a — worst brands (≥500 reviews) | Topicals 3.6590 · DERMAFLASH 3.7856 · Isle of Paradise 3.8601 |
 | BQ1b — categories (secondary, see D16) | By volume: Moisturizers 297,201 (4.3172) · Treatments 221,871 (4.3040) · Cleansers 200,477 (**4.3443, best**) · Mini Size 85,433 (4.2856) · Eye Care 74,966 (**4.1784**) · Masks 70,483 (4.3410) · Lip Balms 61,321 (4.3327) · Sunscreen 41,126 (**4.1665, worst**) |
@@ -409,9 +430,17 @@ Full reasoning lives in `docs/09_decision_log.md`. Summary:
 - **D19** Every dropped row is counted against a named reason, zeros included, and an
   unexplained gap raises `ReconciliationError`. Dropping rows is allowed; dropping them
   without saying how many and why is not.
-- **D20** `watch_for_failure` (`one_failed`, the DAG's only leaf). `cleanup_staging` uses
-  `all_done` so failures still clean up — which made it the only leaf, and Airflow derives run
-  state from leaves, so a failed extract produced a **green** run over an empty warehouse.
+- **D20** *(superseded by D24)* `cleanup_staging` uses `all_done` so failures still clean up —
+  which made it the only leaf, and Airflow derives run state from leaves, so a failed extract
+  produced a **green** run over an empty warehouse. First fixed with a `watch_for_failure`
+  watcher wired downstream of all 15 other tasks.
+- **D24** The watcher is replaced by marking `cleanup_staging` `.as_teardown()`. Airflow
+  excludes ignorable teardowns from run-state calculation, so `load_fact_from_staging` becomes
+  the sole effective leaf and failure propagates to it — same guarantee, **15 tasks / 21 edges**
+  instead of 16 / 33. `on_failure_fail_dagrun` **must stay False**: setting it True makes
+  cleanup the sole leaf again and reinstates D20's bug. Proven by injecting a failure, which
+  also exposed a pre-existing race that stranded 513,606 staging rows; cleanup now waits on
+  every staging writer.
 - **D21** Quality checks carry a severity. `hard_failure` halts before any write; `warning`
   logs and continues. All-fatal sounds rigorous but means the only checks worth writing are
   ones you would stop production for.
@@ -436,7 +465,7 @@ Full reasoning lives in `docs/09_decision_log.md`. Summary:
 | Junk dimension `dim_reviewer_profile` | The reference had no analog; four correlated low-cardinality attributes is the textbook case |
 | `dim_customer` carries no descriptive attributes | See D2 |
 | **Streamlit instead of Power BI** | The dashboard becomes part of the repo — versioned, diffable, testable in CI, reproducible with one command. The cost (no DAX, no Power BI model demonstrated) is stated in D18 rather than hidden |
-| **A DAG failure watcher** | The reference's DAG had no `all_done` cleanup task, so it never hit the bug where a failed run reports success (D20) |
+| **A teardown-based failure guarantee** | The reference's DAG had no `all_done` cleanup task, so it never hit the bug where a failed run reports success (D20 → D24) |
 | **Enforced row reconciliation** | The reference dropped unmatched rows with a log line. Counting every drop against a named reason and raising on an unexplained gap is stricter than the pattern taught (D19) |
 
 ---

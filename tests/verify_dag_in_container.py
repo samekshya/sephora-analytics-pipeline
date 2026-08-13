@@ -38,7 +38,13 @@ EXPECTED_TASKS = {
     "extract_fact_to_staging", "transform_fact_staged",
     "quality_check_fact_staged", "load_fact_from_staging",
     "cleanup_staging",
-    "watch_for_failure",
+}
+
+STAGING_WRITER_LOADS = {
+    "load_product_from_staging",
+    "load_customer_from_staging",
+    "load_reviewer_profile_from_staging",
+    "load_fact_from_staging",
 }
 
 passed = 0
@@ -79,22 +85,44 @@ def main():
           f"{len(actual)} tasks; missing={EXPECTED_TASKS - actual}, "
           f"unexpected={actual - EXPECTED_TASKS}")
 
-    watcher = dag.get_task("watch_for_failure")
-    check("watcher_uses_one_failed", rule(watcher) == "one_failed", rule(watcher))
-    check("watcher_does_not_retry", watcher.retries == 0)
-
-    leaves = {t.task_id for t in dag.tasks if not t.downstream_task_ids}
-    check("watcher_is_the_only_leaf", leaves == {"watch_for_failure"}, str(leaves))
-
-    check("watcher_watches_every_other_task",
-          watcher.upstream_task_ids == EXPECTED_TASKS - {"watch_for_failure"},
-          f"{len(watcher.upstream_task_ids)} upstreams")
-
     cleanup = dag.get_task("cleanup_staging")
-    check("cleanup_runs_even_after_failure", rule(cleanup) == "all_done",
+    check("cleanup_runs_even_after_failure", rule(cleanup).startswith("all_done"),
           rule(cleanup))
-    check("cleanup_precedes_watcher",
-          "watch_for_failure" in cleanup.downstream_task_ids)
+    check("cleanup_is_a_teardown", cleanup.is_teardown)
+    check("cleanup_does_not_fail_the_dagrun",
+          cleanup.on_failure_fail_dagrun is False,
+          "True would make cleanup the sole effective leaf again")
+
+    def is_effective_leaf(task):
+        """Mirrors Airflow's DagRun._tis_for_dagrun_state leaf rule."""
+        for down_id in task.downstream_task_ids:
+            down = dag.get_task(down_id)
+            if not down.is_teardown or down.on_failure_fail_dagrun:
+                return False
+        return not task.is_teardown or task.on_failure_fail_dagrun
+
+    leaves = {t.task_id for t in dag.tasks if is_effective_leaf(t)}
+    check("cleanup_cannot_speak_for_the_run",
+          leaves == {"load_fact_from_staging"}, str(leaves))
+
+    def reaches_leaf(task_id, seen=None):
+        seen = seen if seen is not None else set()
+        if task_id == "load_fact_from_staging":
+            return True
+        if task_id in seen:
+            return False
+        seen.add(task_id)
+        return any(reaches_leaf(d, seen)
+                   for d in dag.get_task(task_id).downstream_task_ids)
+
+    unwatched = {t.task_id for t in dag.tasks
+                 if t.task_id not in ("load_fact_from_staging", "cleanup_staging")
+                 and not reaches_leaf(t.task_id)}
+    check("every_task_can_fail_the_run", not unwatched, str(unwatched))
+
+    check("cleanup_waits_for_every_staging_writer",
+          cleanup.upstream_task_ids == STAGING_WRITER_LOADS,
+          f"{len(cleanup.upstream_task_ids)} upstreams")
 
     extract = dag.get_task("extract_fact_to_staging")
     check("retry_policy",
@@ -102,8 +130,8 @@ def main():
           f"retries={extract.retries}, delay={extract.retry_delay}")
 
     param = dag.params.get_param("load_mode")
-    check("load_mode_param_offers_three_modes",
-          param.schema.get("enum") == ["full", "historical", "incremental"]
+    check("load_mode_param_offers_two_triggerable_modes",
+          param.schema.get("enum") == ["full", "incremental"]
           and param.value == "incremental",
           f"default={param.value}, enum={param.schema.get('enum')}")
 

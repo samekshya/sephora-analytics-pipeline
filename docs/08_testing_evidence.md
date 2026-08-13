@@ -7,7 +7,7 @@ Airflow container. Last full run: **2026-08-12**.
 tests/unit/test_quality.py                   15 tests   no database needed
 tests/unit/test_transform.py                 17 tests   no database needed
 tests/integration/test_pipeline_reconciliation.py  9 tests   needs Postgres
-tests/integration/test_dashboard_smoke.py    10 tests   needs Postgres + streamlit
+tests/integration/test_dashboard_smoke.py     8 tests   needs Postgres + streamlit
 tests/test_dag_structure.py                  12 tests   needs airflow (skips locally)
 tests/verify_dag_in_container.py             11 asserts runs inside the container
 ```
@@ -99,7 +99,7 @@ differences mattered.
 | `test_empty_incremental_batch_is_clean_noop` | Watermark current → 0 extracted → transform, reconcile and load all handle zero without raising |
 | `test_watermark_matches_max_fact_date` | The watermark cannot disagree with the data it describes, because it is read from it |
 
-### `tests/integration/test_dashboard_smoke.py` — the app actually runs (10)
+### `tests/integration/test_dashboard_smoke.py` — the app actually runs (8)
 
 Runs `dashboard/app.py` through Streamlit's `AppTest` harness.
 
@@ -109,31 +109,34 @@ Runs `dashboard/app.py` through Streamlit's `AppTest` harness.
 
 | Test | Proves |
 |---|---|
-| `test_overview_page_renders` | Page 1 executes with no exception; KPI metrics present |
-| **`test_overview_kpi_matches_the_warehouse`** | **The displayed review count and average rating equal `SELECT count(*), round(avg(rating),3) FROM dw.fact_reviews`.** The dashboard cannot show a number the warehouse disagrees with |
-| `test_deep_dive_page_renders` | Page 2 executes; BQ3 and BQ4 sections present |
-| `test_min_reviews_filter_is_live` | Changing the floor changes the output — the filter re-queries rather than redrawing a cached picture |
-| `test_hype_gap_slider_is_live` | Changing the hype-gap threshold changes the SQL-backed product set |
-| `test_price_range_slider_is_live` | Price bounds are bound into the warehouse query rather than filtering a preloaded frame |
-| `test_skin_group_floor_is_live` | The minimum skin-group sample size changes both BQ4 result sets |
-| `test_review_length_section_renders` | The review-length evidence and both supporting visuals render without an exception |
+| `test_page_renders_with_kpis` | The page executes with no exception; KPI metrics present |
+| **`test_kpis_match_the_warehouse`** | **The displayed review count and average rating equal `SELECT count(*), round(avg(rating),3) FROM dw.fact_reviews`.** The dashboard cannot show a number the warehouse disagrees with |
+| `test_the_page_is_a_single_page` | No page selector survives in the sidebar (D25) |
+| `test_all_five_business_questions_are_on_the_one_page` | BQ1–BQ5 all appear as headings without navigating |
+| `test_min_reviews_filter_is_live` | Changing the floor changes the output — the one surviving control re-queries rather than redrawing a cached picture |
+| `test_review_length_finding_is_stated` | The page keeps stating that the obvious hypothesis fails on this data |
 | `test_review_length_view_reconciles_to_the_fact_table` | Every fact row lands in exactly one review-length bucket |
 | `test_data_quality_panel_reports_the_row_accounting` | The live panel re-derives source, warehouse, and integrity counts rather than reading a stored status claim |
+
+> Three tests were **removed** with the controls they asserted (hype-gap, price-range
+> and skin-group sliders) when D25 reduced the dashboard to one control. They were
+> good tests of a design that no longer exists; keeping them passing would have meant
+> keeping the sliders.
 
 ### DAG structure (12 pytest / 11 in-container)
 
 | Assertion | Proves |
 |---|---|
 | `dag_imports_without_errors` | No syntax or import breakage |
-| `expected_tasks_present` | Exactly 16 tasks, named as designed |
+| `expected_tasks_present` | Exactly 15 tasks, named as designed |
 | `retry_policy` | 2 retries, 5-minute delay |
 | `load_mode_param_offers_three_modes` | Enum `[full, historical, incremental]`, defaulting to the cheap one |
-| `cleanup_runs_even_after_failure` | `trigger_rule = all_done` |
-| `watcher_uses_one_failed` | `trigger_rule = one_failed` |
-| `watcher_does_not_retry` | `retries = 0` |
-| **`watcher_is_the_only_leaf`** | **The critical one.** Airflow derives run state from leaves; any leaf besides the watcher can mask a failure |
-| **`watcher_watches_every_other_task`** | `one_failed` evaluates *direct* upstreams only, so a task missing from the watcher's upstream set is a failure it cannot see. Easy to break by adding a task and forgetting to wire it — and the failure mode is invisible |
-| `cleanup_precedes_watcher` | A failed run still cleans up before being marked failed |
+| `cleanup_runs_even_after_failure` | Trigger rule still fires when upstreams failed |
+| `cleanup_is_a_teardown` | The marker the whole guarantee rests on |
+| **`cleanup_cannot_speak_for_the_run`** | **The critical one.** Airflow derives run state from effective leaves; cleanup must not be among them, or a failed run reports success |
+| **`cleanup_does_not_fail_the_dagrun`** | Pins `on_failure_fail_dagrun = False`. Setting it `True` looks like a strictness improvement and actually reinstates D20's bug by making cleanup the sole effective leaf again |
+| **`every_task_can_fail_the_run`** | Every task has a propagation path to the effective leaf, so no task's failure is invisible. Replaces the old watcher-watches-everything assertion |
+| `cleanup_waits_for_every_staging_writer` | Regression test: cleanup waits on all four staging writers, not just the fact chain |
 | `fact_is_split_into_four_stages` | extract → transform → quality → load, separately retryable |
 | `product_waits_for_brand` | `dim_product` resolves `brand_key`, so brand must load first |
 
@@ -150,10 +153,29 @@ Measured from actual runs and recorded here as evidence rather than assertion:
 | Incremental, watermark 2022-12-31 | 49,503 extracted, **49,503 inserted** |
 | Re-run incremental, watermark 2023-03-21 | **0 extracted**, gate skipped, 0 inserted |
 | Final warehouse | **1,093,371** = `staging.review` exactly |
-| Airflow historical run | All tasks green (after the D15 chunking fix) |
+| Airflow historical run | All tasks green in **134 seconds** (after the D15 chunking fix) |
 | Airflow incremental run | All tasks green in **22 seconds** |
 | Staging tables between runs | All 6 at **0 rows** |
 | All 8 full-population views | Reconcile to 1,093,371 exactly |
+
+### Failure injection (D24)
+
+`extract_fact_to_staging` was forced to `failed` on a live run to check that the
+teardown design reports failure rather than masking it:
+
+| Observation | Result |
+|---|---|
+| `transform` / `quality` / `load_fact` | `upstream_failed` — propagation reaches the effective leaf |
+| `cleanup_staging` | **success** — the teardown still cleaned up |
+| **DAG run state** | **failed** — a green cleanup beside a red run, which is exactly the case that used to report success |
+| Staging tables afterwards | All 6 at **0 rows** |
+
+The first attempt exposed a **latent race**: with `load_fact` as cleanup's only
+upstream, a short-circuiting fact chain let cleanup run before the dimension
+branches had staged, stranding **513,606 rows** under that run's own `batch_id`.
+Cleanup now waits on all four staging writers, and the re-run left all six tables
+empty. The race predated the teardown change — it was invisible until a failure
+was actually forced.
 
 ---
 
@@ -161,9 +183,10 @@ Measured from actual runs and recorded here as evidence rather than assertion:
 
 Stated rather than left for someone to notice:
 
-- **No test forces a real DAG task to fail** to observe the watcher going red
-  end-to-end. The wiring is asserted structurally; the runtime behaviour is
-  Airflow's documented `one_failed` semantics.
+- **Failure behaviour is verified manually, not by an automated test.** A forced
+  failure was run end to end (see the table above) and the result recorded, but
+  nothing in `pytest` reproduces it — doing so needs a live scheduler, so it
+  stays a documented manual procedure rather than a CI assertion.
 - **No `EXPLAIN ANALYZE` capture.** Indexes were created deliberately with
   stated reasons, but no before/after performance comparison was recorded.
 - **No coverage measurement.** Test count is not coverage.

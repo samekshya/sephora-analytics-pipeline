@@ -24,11 +24,16 @@ reproducible with `sql/validation/dashboard_checks.sql`. Nothing is estimated.
 Two things worth saying out loud:
 
 **The mean is the weaker half of this finding.** The whole spread is about a
-tenth of a star. The **standard deviation** is the sturdier result: it falls
-steadily from 1.2211 to 1.0996 as price rises. Expensive products are not
-mainly rated *higher* — they are rated far more **consistently**. Cheap
-products collect both delighted and furious reviewers; premium ones mostly meet
-expectations.
+tenth of a star. The **standard deviation** is the sturdier result — but it is
+*not* monotonic, and an earlier version of this document said it was. It falls
+from 1.2211 to **1.0996 at $50–100** and then widens again to 1.1366 above
+$100. Cheap products collect both delighted and furious reviewers; products
+around $50–100 mostly meet expectations.
+
+**Both curves turn in the same place, which is the real result.** $50–100 is
+simultaneously the best-rated band *and* the most agreed-upon one, and $100+
+regresses on both measures at once. That is a stronger claim than "dearer is
+better" and it is the one the data actually supports.
 
 **The $100+ reversal is the interesting part.** Satisfaction climbs with price
 right up to $100 and then drops back to roughly what a $15 product achieves.

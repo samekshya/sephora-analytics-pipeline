@@ -63,7 +63,7 @@ dropped. See [02](02_data_quality_findings.md) §5 and **D3**.
 | **Idempotency** | `ON CONFLICT … DO NOTHING` on every load; re-running inserts 0 | `tests/unit/test_transform.py::test_reconcile_load_idempotent_rerun` |
 | **Incremental capability** | Watermark on `MAX(submission_date)`; new reviews load without reprocessing history | [05](05_etl_and_incremental_loading.md) |
 | **No silent data loss** | Every dropped row is counted against a named reason; unexplained gaps raise | `etl/reconcile.py`, D19 |
-| **Visibility** | Structured logging throughout; failures fail loudly, and a failed DAG run reports failed | D20 (the watcher) |
+| **Visibility** | Structured logging throughout; failures fail loudly, and a failed DAG run reports failed | D20 → D24 (cleanup as teardown) |
 
 ## Explicitly out of scope
 

@@ -40,54 +40,21 @@ The warehouse is structured to answer:
 - **PostgreSQL 16** — two databases: `sephora_oltp` (`raw` + `3nf` + `staging`) and
   `sephora_dw` (star schema)
 - **Apache Airflow 3.3.0** — staged DAG, watermark-driven incremental loads
-- **Streamlit + Plotly** — 2-page dashboard, live connection, answering the five business questions (D18)
+- **Streamlit + Plotly** — single-page dashboard, live connection, answering the five business questions (D18, D25)
 - **SQL** — append-only numbered migrations
 
 ## Architecture
 
-```mermaid
-flowchart LR
-    CSV["6 source CSVs<br/>1,094,411 reviews"]
-
-    subgraph CLEAN["local scripts"]
-        EXP["explore.py"]
-        CLN["clean.py"]
-    end
-
-    subgraph OLTP["sephora_oltp"]
-        RAW[("raw")]
-        NF[("3nf")]
-        STG[("staging")]
-    end
-
-    subgraph ETL["etl/ package"]
-        EX["extract.py"]
-        TR["transform.py"]
-        RC["reconcile.py"]
-        QA["quality.py"]
-        LD["load.py"]
-    end
-
-    subgraph DW["sephora_dw — star schema"]
-        DIMS[("5 dimensions")]
-        FACT[("fact_reviews")]
-        VIEWS[("10 analytics views")]
-    end
-
-    BI["Streamlit dashboard"]
-
-    CSV --> EXP --> CLN --> RAW --> NF --> STG
-    STG --> EX --> TR --> RC --> QA --> LD
-    LD --> DIMS
-    LD --> FACT
-    DIMS --> VIEWS
-    FACT --> VIEWS
-    VIEWS --> BI
-```
+![Data flow from the source CSVs through the OLTP database and the star-schema warehouse to
+the Streamlit dashboard, orchestrated by Airflow](docs/diagrams/architecture.png)
 
 Three layers in the OLTP database, each with one job: `raw` mirrors the source for
 traceability, `3nf` removes the redundancy, `staging` pre-joins it back into the shape the ETL
 reads. The warehouse then denormalizes deliberately — that contrast is the point.
+
+Diagrams are generated, not drawn: [`docs/diagrams/build_diagrams.py`](docs/diagrams/build_diagrams.py)
+emits all three as SVG, so a schema change is a code change and the row counts on them are the
+measured ones.
 
 ## Status
 
@@ -98,9 +65,9 @@ reads. The warehouse then denormalizes deliberately — that contrast is the poi
 | OLTP `raw` + `3nf` + `staging` | Built, loaded, reconciled |
 | Star schema warehouse | Built, loaded, verified |
 | ETL package + `pipeline.py` | Complete — three modes, reconciliation, idempotency all verified |
-| Airflow staged DAG | Complete — 16 tasks, failure watcher, both modes green |
-| Analytics views | Complete — 10 views, all full-population views reconciling to `fact_reviews` |
-| Streamlit dashboard | Complete — 2 pages, live, smoke-tested against the warehouse |
+| Airflow staged DAG | Complete — 15 tasks, cleanup teardown, both modes green |
+| Analytics views | Complete — 11 views, all full-population views reconciling to `fact_reviews` |
+| Streamlit dashboard | Complete — one page, Sephora theme, live, smoke-tested against the warehouse |
 | Tests | 51 passing + 11 DAG assertions verified in-container |
 | Documentation | Complete — [`docs/`](docs/README.md), 11 numbered documents |
 
@@ -124,69 +91,22 @@ Full profiling, verified relationships and quality findings:
 
 ## The data model
 
+### OLTP — `sephora_oltp`, the `3nf` schema
+
+Nine tables with foreign keys enforced. The four reviewer-attribute lookups hang off
+`review` rather than `author`, which is the one modelling choice that changes the numbers —
+see below.
+
+![The 3NF OLTP model: brand and category feeding product, author and four reviewer-attribute
+lookups feeding review](docs/diagrams/oltp_er.png)
+
+### Warehouse — `sephora_dw`, the `dw` schema
+
 Grain of `fact_reviews`: **one row per review.**
 
-```mermaid
-erDiagram
-    dim_product ||--o{ fact_reviews : product_key
-    dim_customer ||--o{ fact_reviews : customer_key
-    dim_reviewer_profile ||--o{ fact_reviews : reviewer_profile_key
-    dim_date ||--o{ fact_reviews : date_key
-    dim_brand ||--o{ dim_product : brand_key
-
-    dim_brand {
-        int brand_key PK
-        int brand_id
-        string brand_name
-    }
-    dim_product {
-        int product_key PK
-        string product_id
-        string product_name
-        int brand_key FK
-        string primary_category
-        string secondary_category
-        string tertiary_category
-        numeric price_usd
-        string price_band
-        int loves_count
-    }
-    dim_customer {
-        int customer_key PK
-        string customer_id
-    }
-    dim_reviewer_profile {
-        int reviewer_profile_key PK
-        string skin_tone
-        string skin_type
-        string eye_color
-        string hair_color
-    }
-    dim_date {
-        int date_key PK
-        date full_date
-        int year
-        int quarter
-        int month
-        string month_name
-        boolean is_weekend
-    }
-    fact_reviews {
-        int review_key PK
-        bigint source_row_id
-        string product_id
-        int product_key FK
-        int customer_key FK
-        int reviewer_profile_key FK
-        int date_key FK
-        smallint rating
-        boolean is_recommended
-        numeric helpfulness
-        int total_feedback_count
-        int review_length
-        date submission_date
-    }
-```
+![The star schema: fact_reviews at the centre with dim_product, dim_customer,
+dim_reviewer_profile and dim_date, and dim_brand snowflaked off
+dim_product](docs/diagrams/star_schema.png)
 
 ### The decision worth defending
 
@@ -260,9 +180,15 @@ flowchart LR
     DD --> TF
 
     TF --> QF[quality gate] --> LF[load fact]
-    LF --> CLEAN[cleanup staging]
-    CLEAN -. "all 15 task states are direct upstream" .-> WATCH[watch for failure]
+
+    LF -. teardown .-> CLEAN["cleanup staging<br/>(teardown)"]
+    LP -. teardown .-> CLEAN
+    LC -. teardown .-> CLEAN
+    LR -. teardown .-> CLEAN
 ```
+
+Every edge above is a real dependency — there is no failure-reporting plumbing in the graph.
+`load_fact` is the only **effective leaf**, so the run's state is its state.
 
 Three dimension branches run in parallel; `product` waits on `brand` for the foreign key. The
 fact table is split into four staged tasks so each retries independently and the Graph view
@@ -271,10 +197,12 @@ names the stage that failed rather than showing one red box.
 Each dimension pair writes through a staging table scoped by `batch_id = run_id`, so no
 row-level data crosses task boundaries via XCom — XCom is metadata storage, not a data channel.
 
-`cleanup_staging` uses `trigger_rule="all_done"`, so a failed run still clears its own rows.
-The watcher uses `one_failed`, receives **all 15 other tasks as direct
-upstreams**, and is the DAG's only leaf. The diagram collapses those 15 watcher
-edges into the dashed annotation so the execution path remains readable.
+`cleanup_staging` uses `trigger_rule="all_done"`, so a failed run still clears its own rows,
+and is marked as a **teardown** so that cleaning up cannot be mistaken for succeeding.
+Airflow excludes ignorable teardowns from run-state calculation, which leaves
+`load_fact_from_staging` as the only effective leaf — so any upstream failure reaches it as
+`upstream_failed` and the run goes red. This replaced a watcher task that needed an edge from
+all 15 other tasks; the DAG went from 16 tasks and 33 edges to **15 and 21**. **D24**.
 
 ![Verified incremental Airflow run](docs/screenshots/airflow_incremental_run.png)
 
@@ -353,16 +281,20 @@ See [`dashboard/README.md`](dashboard/README.md) for what each visual shows and
 
 ![Streamlit overview](docs/screenshots/streamlit_overview.png)
 
-The Deep dive can also be opened directly at
-<http://localhost:8501/?page=deep-dive> for a stable presentation link.
+The whole dashboard is one page, so there is no navigation to get wrong mid-demo — the
+presentation link is just <http://localhost:8501>.
 
 ## Presentation
 
-The completed eight-minute deck is available as an editable
-[`PowerPoint`](presentation/output/Sephora_Analytics_Pipeline.pptx) and a
-portable [`PDF`](presentation/output/Sephora_Analytics_Pipeline.pdf). See
-[`presentation/README.md`](presentation/README.md) for the timed slide sequence,
-speaker notes, and reproducible build command.
+The deck is [`presentation/sephora_pipeline_deck.html`](presentation/sephora_pipeline_deck.html) —
+nine slides, opened in any browser, arrow keys to advance. It is a single file next to its
+assets, so it diffs like the rest of the repo and the diagrams in it are the generated ones
+rather than screenshots of a drawing tool.
+
+The earlier [`PowerPoint`](presentation/output/Sephora_Analytics_Pipeline.pptx) and
+[`PDF`](presentation/output/Sephora_Analytics_Pipeline.pdf) predate the teardown DAG (D24) and
+the single-page dashboard (D25); the HTML deck is the current one. See
+[`presentation/README.md`](presentation/README.md) for the slide sequence and speaker notes.
 
 ### The headline finding
 
@@ -376,9 +308,11 @@ Price does **not** predict satisfaction linearly. It is an inverted U:
 | **$50–100** | **4.3335** ← peak | 1.0996 |
 | $100+ | 4.2708 ← falls back | 1.1366 |
 
-The mean is the weaker half of it. The **standard deviation falls steadily** as price rises —
-expensive products aren't mainly rated *higher*, they're rated far more **consistently**.
-Above $100 satisfaction drops back to roughly what a $15 product achieves.
+The mean is the weaker half of it. **Standard deviation** — the width of opinion — is the
+sturdier signal, and it turns in the same place the rating does: tightest at **1.0996 in
+$50–100**, then widening again to 1.1366 above $100. So $50–100 is both the best-rated band
+and the most agreed-upon one, and the priciest band regresses on **both** measures. (It is not
+a monotone fall; saying so would contradict the table above.)
 
 ## Verified
 
@@ -434,8 +368,10 @@ they were actually recorded. **D2**, and the single most important decision here
 
 **A failed DAG run now reports failure.** `cleanup_staging` uses `trigger_rule="all_done"` so
 it cleans up after a failure — which made it the only leaf task, and Airflow derives run state
-from leaves. A failed extract therefore produced a *green* run over an empty warehouse.
-`watch_for_failure` (`one_failed`, the only leaf) fixes it. **D20**.
+from leaves. A failed extract therefore produced a *green* run over an empty warehouse. Fixed
+first with a watcher task (**D20**), then more cheaply by marking cleanup a **teardown**, which
+excludes it from run state and removes 12 edges. Verified by forcing a real failure, not by
+trusting the docs. **D24**.
 
 **Three load modes, because `--full-reload` wasn't one.** It stopped at 2023-01-01 — a
 historical baseline whose name claimed otherwise, and there was no way to load everything in
@@ -489,7 +425,7 @@ pipeline.py                      local runner: --mode full|historical|incrementa
 docker-compose.yml               project Postgres (host port 5434)
 docker-compose-airflow.yml       Airflow 3.3.0, LocalExecutor (port 8081)
 dags/
-  sephora_dw_pipeline_staged.py  staged DAG, 16 tasks
+  sephora_dw_pipeline_staged.py  staged DAG, 15 tasks
 etl/
   extract.py                     staging -> DataFrames, three load modes
   transform.py                   key resolution, derived columns, counted drops
@@ -498,7 +434,7 @@ etl/
   load.py                        inserts with ON CONFLICT DO NOTHING
   staging.py                     per-run staging-table helpers for the DAG
 dashboard/
-  app.py                         Streamlit, 2 pages, live connection
+  app.py                         Streamlit, one page, live connection
   README.md                      what each visual shows
   data_model.md                  which tables and views it reads
 sql/
@@ -517,7 +453,12 @@ docs/
   README.md                      documentation index
   01..11                         problem statement -> walkthrough
   archive/                       superseded docs, kept
+  diagrams/                      build_diagrams.py -> architecture, OLTP ER, star schema
   screenshots/                   presentation captures
+presentation/
+  sephora_pipeline_deck.html     the nine-slide deck; open in a browser
+  assets/                        diagrams and chart crops the deck embeds
+  speaker_notes.md               what to say, per slide
 data/README.md                   where to get the CSVs and where to put them
 logs/                            per-run logs, timestamped
 ```

@@ -54,3 +54,6 @@ output/
 !presentation/output/
 !presentation/output/*.pptx
 !presentation/output/*.pdf
+# Office lock files - never commit these
+~$*
+presentation/output/~$*

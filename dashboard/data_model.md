@@ -6,28 +6,39 @@ curated views wherever one exists. It never reads `sephora_oltp`, never touches
 
 ## Views consumed
 
-| View | Page | Feeds | Grain |
-|---|---|---|---|
-| `vw_kpi_summary` | Overview | The 5-metric KPI row | 1 row |
-| `vw_review_volume_by_month` | Overview | Volume bars, rating lines | 1 row per month (176) |
-| `vw_rating_by_brand` | Overview | Best/worst brand bars | 1 row per brand (304) |
-| `vw_rating_by_category` | Overview | Category bubble scatter | 1 row per category triple (174) |
-| `vw_hype_vs_reality` | Deep dive | Hype scatter, both tables, price scatter | 1 row per product with ≥50 reviews (1,660) |
-| `vw_rating_by_price_band` | Deep dive | Price band bars, std-dev line | 1 row per band (5) |
-| `vw_rating_by_skin_type` | Deep dive | Skin type bars | skin_type × category |
-| `vw_rating_by_skin_tone` | Deep dive | Skin tone bars | skin_tone × category |
+The dashboard is one page (D25), so the ordering below is the order a reader
+meets each view scrolling down.
+
+| View | Feeds | Grain |
+|---|---|---|
+| `vw_kpi_summary` | The 5-metric KPI row and the live watermark | 1 row |
+| `vw_review_volume_by_month` | BQ5 volume bars, monthly + rolling rating lines | 1 row per month (176) |
+| `vw_rating_by_brand` | BQ1 brands-against-the-average diverging bars, unfiltered | 1 row per brand (304) |
+| `vw_rating_by_brand_category` | The same chart when a Category filter is on | 1 row per (brand, secondary category) |
+| `vw_rating_by_category` | BQ1b category dot plot | 1 row per category triple (174) |
+| `vw_rating_by_price_band` | BQ3 rating line and spread line | 1 row per band (5) |
+| `vw_hype_vs_reality` | BQ2 hype scatter and both ranked tables | 1 row per product with ≥50 reviews (1,660) |
+| `vw_rating_by_skin_type` | BQ4 skin-type dot plot | skin_type × category |
+| `vw_rating_by_review_length` | BQ4 review-length small multiples | 1 row per length bucket (6) |
+| `vw_hype_vs_reality` | Also backs the **Explore** product table (brand picker + name search) | 1 row per product with ≥50 reviews (1,660) |
+
+`vw_rating_by_skin_tone` is no longer read by a chart. It is still validated by
+`sql/validation/dashboard_checks.sql` and still reconciles to `fact_reviews`;
+the skin-tone breakdown was cut from the page because it told the same weak
+story as skin type and doubled the chart count to do it (D25).
 
 ## Base tables read directly
 
-Only two, and only for populating filter widgets — never for a chart:
+Since D25 removed the category and date filters, the only direct table reads
+left are in the **data quality panel**, which exists precisely to re-derive row
+accounting rather than trust a view:
 
 | Table | Why |
 |---|---|
-| `dim_product` | Distinct `secondary_category` values for the category filter, restricted to products that actually have reviews |
-| `fact_reviews` | `min`/`max(submission_date)` for the date slider bounds |
+| `fact_reviews` + the four dimensions | Orphan-key counts, duplicate idempotency keys, and the watermark |
+| `raw.reviews`, `3nf.review`, `staging.review` | The row-accounting chain. **The only place the app touches `sephora_oltp`**, on a separate connection that degrades to a warning if that database is down |
 
-Both are cheap: the first hits `idx_dim_product_primary_cat`, the second
-`idx_fact_reviews_submission`.
+No chart reads a base table.
 
 ## Underlying star schema
 

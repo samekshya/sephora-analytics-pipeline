@@ -1,7 +1,7 @@
 # 06 — Airflow Runbook
 
 Airflow **3.3.0**, LocalExecutor, Docker Compose. One DAG:
-`sephora_dw_pipeline_staged`, **16 tasks**.
+`sephora_dw_pipeline_staged`, **15 tasks**.
 
 ---
 
@@ -53,25 +53,46 @@ In the UI: **DAGs → `sephora_dw_pipeline_staged` → Trigger** → set
 | `load_mode` | Loads | Use when |
 |---|---|---|
 | `full` | every review, no date bound | Building or rebuilding for real |
-| `historical` | reviews before 2023-01-01 (1,043,868) | **Demo step 1** |
-| `incremental` | reviews after the watermark | **Demo step 2**, and normal operation |
+| `incremental` | reviews after the watermark | **The demo**, and normal operation |
 
 Default is `incremental` — the cheap, safe option.
 
+> **`historical` is not in the dropdown.** It is a third mode in
+> `etl.extract.LOAD_MODES`, but it is a *baseline-rebuild tool*, not something
+> you orchestrate: it loads reviews before 2023-01-01 and holds the rest back so
+> an incremental run afterwards has real data to pick up. Triggered against a
+> warehouse that is already full — which is the state it is usually in — it
+> inserts nothing and looks like a broken run. Run it locally instead, with
+> `py pipeline.py --mode historical`. The DAG exposes only
+> `TRIGGERABLE_LOAD_MODES`.
+
 ### The demo sequence
 
-```
-1. Trigger with load_mode = historical    -> 1,043,868 rows, watermark ends 2022-12-31
-2. Trigger with load_mode = incremental   -> 49,503 rows,   watermark ends 2023-03-21
-3. Trigger with load_mode = incremental   -> 0 rows extracted, gate skipped, 0 inserted
+Set the baseline **before** you open Airflow, from a terminal:
+
+```powershell
+py pipeline.py --mode historical    # -> 1,043,868 rows, watermark ends 2022-12-31
 ```
 
-Run 3 is worth showing: it proves the watermark stops the pipeline doing work
+Then, in the UI:
+
+```
+1. Trigger with load_mode = incremental   -> 49,503 rows, watermark ends 2023-03-21
+2. Trigger with load_mode = incremental   -> 0 rows extracted, gate skipped, 0 inserted
+```
+
+Run 2 is worth showing: it proves the watermark stops the pipeline doing work
 that has already been done, and that an empty batch is a clean no-op rather
 than a failure.
 
-**To reset for a rehearsal** (destroys the warehouse fact data, keeps the OLTP
-side):
+**To reset for a rehearsal**, remove only the 2023 slice — this is what the
+`historical` baseline amounts to, and it is faster than reloading a million rows:
+
+```powershell
+docker exec leapfrog_sephora_postgres psql -U postgres -d sephora_dw -c "DELETE FROM dw.fact_reviews WHERE submission_date >= '2023-01-01';"
+```
+
+To start the fact table from empty instead:
 
 ```powershell
 docker exec leapfrog_sephora_postgres psql -U postgres -d sephora_dw -c "TRUNCATE dw.fact_reviews RESTART IDENTITY;"
@@ -108,9 +129,7 @@ that a no-op.
                                 │                                           │
                                 └──────────► transform_fact_staged ◄────────┘
                                                      │
-                                             cleanup_staging  (all_done)
-                                                     │
-                                            watch_for_failure (one_failed)
+                                    cleanup_staging  (teardown, all_done)
 ```
 
 Three dimension branches run in **parallel**. `dim_product` waits on
@@ -134,11 +153,17 @@ double everything the first attempt managed to stage.
 
 ## Reading a failed run
 
-### `watch_for_failure` is red
+### The run is red but no task shows `failed`
 
-That is the watcher doing its job. **The real failure is elsewhere** — look for
-the other red task in the Graph view. The watcher's own log says only that
-something upstream failed.
+Look for **`upstream_failed`** (orange), not `failed` (red). The run's state comes
+from `load_fact_from_staging`, which inherits `upstream_failed` from whatever
+actually broke. Walk back up the chain to the one genuinely red task.
+
+### `cleanup_staging` is green on a failed run
+
+That is correct and intended. Cleanup is a **teardown** task: it runs after a
+failure so staging rows are not stranded, and it is excluded from the run's state
+calculation so its success cannot mask the failure (**D24**).
 
 ### `quality_check_fact_staged` failed
 
@@ -192,10 +217,10 @@ even `all_done` didn't fire; deleting by `batch_id` is safe.
 
 ---
 
-## The failure watcher
+## Why a failed run reports failed
 
 `cleanup_staging` must run after a failure, so it uses `trigger_rule="all_done"`.
-That made it the DAG's only **leaf** task — and Airflow derives a DAG run's
+That made it the DAG's last **leaf** task — and Airflow derives a DAG run's
 state from its leaves. The result was a trap:
 
 > extract fails → cleanup still runs → cleanup succeeds → the only leaf is
@@ -204,22 +229,29 @@ state from its leaves. The result was a trap:
 A green run that loaded nothing is worse than a red one, because nobody
 investigates it.
 
-`watch_for_failure` fixes this. It carries `trigger_rule="one_failed"` and every
-other task is wired upstream of it:
+Marking cleanup `.as_teardown()` fixes this. Airflow excludes ignorable teardowns
+when deciding which tasks count toward run state, so the leaf becomes
+`load_fact_from_staging`:
 
-| Scenario | Rule satisfied? | Watcher | DAG run |
-|---|---|---|---|
-| Any task failed | yes | **runs → raises** | **FAILED** |
-| Nothing failed | no | **skipped** | SUCCESS |
+| Scenario | Effective leaf state | DAG run |
+|---|---|---|
+| Any task failed | `upstream_failed` propagates to `load_fact_from_staging` | **FAILED** |
+| Nothing failed | `success` | SUCCESS |
 
-A skipped leaf does not fail a run, so clean runs stay green. `retries=0`:
-retrying a task whose only job is to report an existing failure would just
-delay the red status.
+Cleanup still runs in both cases; it simply no longer speaks for the run.
 
-The upstream list is built from task **objects**, not typed-out names, because
-`one_failed` evaluates *direct* upstreams only — a task missing from that list
-is a failure the watcher cannot see.
-`tests/test_dag_structure.py::test_watcher_watches_every_other_task` asserts it.
+> **Do not set `on_failure_fail_dagrun=True`.** It makes cleanup non-ignorable,
+> which makes it the sole effective leaf again and reinstates the exact bug above.
+> `test_cleanup_does_not_fail_the_dagrun` pins it to `False`.
+
+This replaced a `watch_for_failure` watcher task that had to be wired downstream
+of all 15 other tasks — 15 of the DAG's 33 edges existed only for failure
+reporting. Same guarantee, **15 tasks and 21 edges** instead of 16 and 33 (**D24**,
+superseding D20).
+
+Cleanup waits on every staging **writer**, not just the fact chain, because a
+short-circuiting fact chain otherwise lets it run while the dimension branches are
+still staging — which stranded 513,606 rows in testing. See D24.
 
 ---
 
@@ -230,11 +262,14 @@ deliberate exceptions:
 
 | Task | Retries | Why |
 |---|---|---|
-| `watch_for_failure` | 0 | Reports an existing failure; retrying delays the truth |
 | `quality_check_fact_staged` | 2 configured, but raises `AirflowFailException` | Fails fast — bad data won't pass on retry |
 
 Retries are worth having on the extract and load tasks, where a dropped
 connection or a transient lock is plausible.
+
+> Note that `retries=2, retry_delay=5m` means a genuinely failing extract takes
+> **~11 minutes** to reach its final state. A run that looks stuck on a red-ish
+> task is usually just waiting out a retry delay.
 
 ---
 
@@ -260,15 +295,15 @@ docker exec leapfrog_airflow_scheduler python /tmp/verify_dag_in_container.py
 
 ```
 PASS  dag imports without errors
-PASS  expected_tasks_present  (16 tasks)
-PASS  watcher_uses_one_failed
-PASS  watcher_does_not_retry
-PASS  watcher_is_the_only_leaf  ({'watch_for_failure'})
-PASS  watcher_watches_every_other_task  (15 upstreams)
-PASS  cleanup_runs_even_after_failure  (all_done)
-PASS  cleanup_precedes_watcher
+PASS  expected_tasks_present  (15 tasks; missing=set(), unexpected=set())
+PASS  cleanup_runs_even_after_failure  (all_done_setup_success)
+PASS  cleanup_is_a_teardown
+PASS  cleanup_does_not_fail_the_dagrun  (True would make cleanup the sole effective leaf again)
+PASS  cleanup_cannot_speak_for_the_run  ({'load_fact_from_staging'})
+PASS  every_task_can_fail_the_run  (set())
+PASS  cleanup_waits_for_every_staging_writer  (4 upstreams)
 PASS  retry_policy  (retries=2, delay=0:05:00)
-PASS  load_mode_param_offers_three_modes
+PASS  load_mode_param_offers_two_triggerable_modes  (default=incremental, enum=['full', 'incremental'])
 PASS  fact_is_split_into_four_stages
 PASS  product_waits_for_brand
 
