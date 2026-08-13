@@ -108,12 +108,25 @@ def test_kpis_match_the_warehouse():
 
 
 def test_all_five_business_questions_are_on_the_one_page():
-  """Every BQ must be reachable without navigating (D25)."""
+  """Every question must be reachable without navigating (D25).
+
+  Matched on the question text rather than a Q1-Q5 prefix. The prefixes were
+  removed from the headings — the page runs in narrative order, so they read
+  out of sequence — and a test that keyed on them would have gone on passing
+  while asserting nothing about which question was actually present.
+  """
   at = _run()
 
-  headers = " ".join(h.value for h in at.subheader)
-  for bq in ("Q1", "Q2", "Q3", "Q4", "Q5"):
-    assert bq in headers, f"{bq} is missing from the page"
+  headers = " ".join(h.value for h in at.subheader).lower()
+  expected = {
+    "Q1 brands": "which brands rate best",
+    "Q2 hype": "hype vs reality",
+    "Q3 price": "does price predict satisfaction",
+    "Q4 reviewer": "who is reviewing",
+    "Q5 trend": "volume and rating trend over time",
+  }
+  for label, needle in expected.items():
+    assert needle in headers, f"{label} is missing from the page"
 
 
 def test_min_reviews_filter_is_live():
