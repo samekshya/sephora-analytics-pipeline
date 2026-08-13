@@ -18,7 +18,7 @@ raw -> 3nf boundary (see D3 and D14). A cleaning step that also drops columns
 makes it impossible to tell later which was which.
 
 Every rule logs rows in / rows out / rows dropped so the reconciliation in
-CLAUDE.md is measured rather than assumed.
+docs/00_project_checkpoint.md is measured rather than assumed.
 """
 
 import glob
@@ -28,9 +28,13 @@ from datetime import datetime
 
 import pandas as pd
 
-RAW_DIR = os.path.join('data', 'raw')
-PROCESSED_DIR = os.path.join('data', 'processed')
-LOG_DIR = 'logs'
+# Anchored on this file, not the working directory: the script lives in
+# scripts/ and the data lives at the repository root, so a cwd-relative path
+# would resolve differently depending on where it was launched from.
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+RAW_DIR = os.path.join(REPO_ROOT, 'data', 'raw')
+PROCESSED_DIR = os.path.join(REPO_ROOT, 'data', 'processed')
+LOG_DIR = os.path.join(REPO_ROOT, 'logs')
 
 # Dedup key per D4 — the date is part of it, because the same author reviewing
 # the same product on different dates is a legitimate re-review, not a duplicate.

@@ -238,20 +238,20 @@ Copy-Item .env.example .env                 # working local defaults already in 
 
 docker compose up -d                        # Postgres on 5434, both databases
 
-py explore.py                               # uncomment the checks you want
-py clean.py                                 # -> data/processed/
+py scripts/explore.py                               # uncomment the checks you want
+py scripts/clean.py                                 # -> data/processed/
 
 # OLTP: raw schema, ingest, then the numbered migrations in order
-py ingest.py
+py scripts/ingest.py
 # (setup.ps1 -Step 3, -Step 6 apply the SQL; or psql each file yourself)
 
 # Warehouse: star schema, then the views
 # (setup.ps1 -Step 7)
 
 # Load — three explicit modes
-py pipeline.py --mode full                  # every review, no date bound
-py pipeline.py --mode historical            # before 2023-01-01 (demo baseline)
-py pipeline.py --mode incremental           # after the watermark (default)
+py scripts/pipeline.py --mode full                  # every review, no date bound
+py scripts/pipeline.py --mode historical            # before 2023-01-01 (demo baseline)
+py scripts/pipeline.py --mode incremental           # after the watermark (default)
 
 # Or via Airflow
 docker compose -f docker-compose-airflow.yml up -d
@@ -416,14 +416,15 @@ Cut deliberately, not overlooked:
 ## Layout
 
 ```
-CLAUDE.md                        goals, per-stage status, measured numbers
+README.md                        this file
 setup.ps1                        one-sequence setup, 11 resumable steps
-explore.py                       14 profiling checks, toggled in main()
-clean.py                         raw CSVs -> data/processed/
-ingest.py                        processed CSVs -> raw schema via COPY
-pipeline.py                      local runner: --mode full|historical|incremental
 docker-compose.yml               project Postgres (host port 5434)
 docker-compose-airflow.yml       Airflow 3.3.0, LocalExecutor (port 8081)
+scripts/                         the four pipeline stages, run in this order
+  explore.py                     14 profiling checks, toggled in main()
+  clean.py                       raw CSVs -> data/processed/
+  ingest.py                      processed CSVs -> raw schema via COPY
+  pipeline.py                    local runner: --mode full|historical|incremental
 dags/
   sephora_dw_pipeline_staged.py  staged DAG, 15 tasks
 etl/

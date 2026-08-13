@@ -233,7 +233,7 @@ without the same analysis — no business question came close to needing it.
 ## 6. Reproducing these figures
 
 ```powershell
-py explore.py
+py scripts/explore.py
 ```
 
 Each function answers one question and prints its own findings:

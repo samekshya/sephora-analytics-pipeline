@@ -4,6 +4,7 @@ Read in order for the full story, or jump to what you need.
 
 | # | Document | Answers |
 |---|---|---|
+| 00 | [Project checkpoint](00_project_checkpoint.md) | Where the work actually stands: per-stage status, every measured number, and the things that look like bugs but are not |
 | 01 | [Problem statement](01_problem_statement.md) | What is being built, for which questions, and what is explicitly out of scope |
 | 02 | [Data quality findings](02_data_quality_findings.md) | What was wrong with the raw data, measured before anything was built on it |
 | 03 | [Architecture](03_architecture.md) | How data flows from CSV to dashboard, and why the shape is what it is |

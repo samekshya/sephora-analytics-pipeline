@@ -30,7 +30,7 @@ layout you proofed.
 [`speaker_notes.md`](speaker_notes.md) is the readable script.
 
 The five questions are labelled **Q1–Q5** here, in the dashboard, and in the docs. They are
-the five locked business questions in `CLAUDE.md` §2.
+the five locked business questions in `../docs/00_project_checkpoint.md` §2.
 
 ## The trend figure
 

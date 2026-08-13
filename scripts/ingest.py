@@ -24,8 +24,10 @@ from datetime import datetime
 import psycopg2
 from dotenv import load_dotenv
 
-PROCESSED_DIR = os.path.join('data', 'processed')
-LOG_DIR = 'logs'
+# Anchored on this file rather than the working directory -- see clean.py.
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PROCESSED_DIR = os.path.join(REPO_ROOT, 'data', 'processed')
+LOG_DIR = os.path.join(REPO_ROOT, 'logs')
 
 # (table, csv file, expected row count after cleaning). The expected counts come
 # from clean.py's own output and are asserted after load, so a partial COPY
@@ -50,7 +52,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-load_dotenv()
+load_dotenv(os.path.join(REPO_ROOT, ".env"))
 
 OLTP_DB_CONFIG = dict(
     host=os.getenv('OLTP_DB_HOST'),

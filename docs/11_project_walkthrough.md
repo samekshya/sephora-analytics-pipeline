@@ -3,7 +3,7 @@
 **Purpose of this file**: a full narrative account of the Sephora Reviews capstone,
 from the raw CSVs to the current state, written so anyone (including future-me)
 can read it top to bottom and understand not just *what* was built but *why*,
-at every step. `CLAUDE.md` is the terse running checkpoint; this is the long
+at every step. `docs/00_project_checkpoint.md` is the terse running checkpoint; this is the long
 version.
 
 > **Written 2026-08-07, before the phase-9 remediation.** The narrative of how
@@ -183,7 +183,7 @@ Result: **1,094,411 rows in → 1,093,371 rows out (1,040 duplicates removed)**,
 run end-to-end in 24 seconds, every step logged with counts.
 
 Every rule in `clean.py` logs rows in/out/dropped — so the numbers in
-`CLAUDE.md`'s "Measured Numbers" table aren't estimates, they're what the log
+the checkpoint's "Measured Numbers" table aren't estimates, they're what the log
 files actually reported.
 
 ---
@@ -603,7 +603,7 @@ retroactively at the end:
   modularity, logging, query/performance, orchestration, quality testing,
   version control, analytics output, documentation) checked off item by item
   against what was actually verified — not aspirational.
-- **`CLAUDE.md`** — the running checkpoint, updated at the end of every
+- **`docs/00_project_checkpoint.md`** — the running checkpoint, updated at the end of every
   stage with the actual measured numbers from that stage's run, never
   estimated.
 

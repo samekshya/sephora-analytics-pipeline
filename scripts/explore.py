@@ -15,7 +15,9 @@ from collections import Counter
 
 import pandas as pd
 
-FOLDER = os.path.join('data', 'raw')
+# Anchored on this file rather than the working directory -- see clean.py.
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+FOLDER = os.path.join(REPO_ROOT, 'data', 'raw')
 
 # review_text is ~500MB across the five files and is never needed for structural
 # profiling — excluded by default so every function below stays memory-bounded.

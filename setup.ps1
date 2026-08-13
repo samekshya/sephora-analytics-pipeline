@@ -216,7 +216,7 @@ if (Should-Run 4) {
     if ($processed -and $processed.LastWriteTime -gt $rawNewest) {
         Write-Ok "data/processed/ is newer than data/raw/ - skipping (delete data/processed/ to force)"
     } else {
-        Invoke-Native { & $PYTHON clean.py } "clean.py"
+        Invoke-Native { & $PYTHON scripts\clean.py } "clean.py"
         Write-Ok "cleaned -> data/processed/"
     }
 }
@@ -225,7 +225,7 @@ if (Should-Run 4) {
 if (Should-Run 5) {
     Write-Step 5 "Ingest into the raw schema"
 
-    Invoke-Native { & $PYTHON ingest.py } "ingest.py"
+    Invoke-Native { & $PYTHON scripts\ingest.py } "ingest.py"
 
     Write-Ok "raw.product_info: $(Invoke-SqlQuery $OLTP 'SELECT count(*) FROM raw.product_info') rows"
     Write-Ok "raw.reviews:      $(Invoke-SqlQuery $OLTP 'SELECT count(*) FROM raw.reviews') rows"
@@ -257,7 +257,7 @@ if (Should-Run 7) {
     $views = Invoke-SqlQuery $DW "SELECT count(*) FROM information_schema.views WHERE table_schema='dw'"
     Write-Ok "dw schema ready, $views view(s) created"
     Write-Warn "Dimensions and facts are NOT loaded yet - that is the DAG's job (step 10)."
-    Write-Info "To load without Airflow: $PYTHON pipeline.py --mode historical"
+    Write-Info "To load without Airflow: $PYTHON scripts\pipeline.py --mode historical"
 }
 
 # ---------------------------------------------------------------------------

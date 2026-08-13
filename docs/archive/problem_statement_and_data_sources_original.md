@@ -297,7 +297,7 @@ Incremental batch by month:
 
 Three months of real data at meaningful volume, enough to show the watermark advancing across
 multiple runs (D8). The full-load figure is before deduplication; the exact loaded count is
-measured by `clean.py` and recorded in `CLAUDE.md`.
+measured by `clean.py` and recorded in the project checkpoint.
 
 **Grain check**: `submission_time` has a **non-midnight time component on 0 of 1,094,411
 rows**. Every timestamp is date-only, so a date-grain key and a date-grain watermark lose
@@ -308,7 +308,7 @@ nothing (D12).
 ## 7. How to reproduce these figures
 
 ```bash
-python explore.py
+python scripts/explore.py
 ```
 
 Uncomment the function(s) you want in `main()`. Each function answers one question and prints

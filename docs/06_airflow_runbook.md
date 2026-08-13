@@ -63,7 +63,7 @@ Default is `incremental` — the cheap, safe option.
 > an incremental run afterwards has real data to pick up. Triggered against a
 > warehouse that is already full — which is the state it is usually in — it
 > inserts nothing and looks like a broken run. Run it locally instead, with
-> `py pipeline.py --mode historical`. The DAG exposes only
+> `py scripts/pipeline.py --mode historical`. The DAG exposes only
 > `TRIGGERABLE_LOAD_MODES`.
 
 ### The demo sequence
@@ -71,7 +71,7 @@ Default is `incremental` — the cheap, safe option.
 Set the baseline **before** you open Airflow, from a terminal:
 
 ```powershell
-py pipeline.py --mode historical    # -> 1,043,868 rows, watermark ends 2022-12-31
+py scripts/pipeline.py --mode historical    # -> 1,043,868 rows, watermark ends 2022-12-31
 ```
 
 Then, in the UI:

@@ -4,10 +4,10 @@
 
 Writes architecture.svg, oltp_er.svg and star_schema.svg beside this script.
 They are used by README.md, docs/ and the HTML presentation, so they are
-generated rather than hand-drawn: when a measured number in CLAUDE.md moves,
+generated rather than hand-drawn: when a measured number in the checkpoint moves,
 change it here once and re-run.
 
-Every row count below is a measured figure from CLAUDE.md section 7. Never put
+Every row count below is from docs/00_project_checkpoint.md section 7. Never put
 an estimate in a diagram — a wrong number on a slide is worse than no number.
 """
 

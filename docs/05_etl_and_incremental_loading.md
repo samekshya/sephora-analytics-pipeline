@@ -35,9 +35,9 @@ was missing by design. **A mode that withholds data must say so in its name**
 | `incremental` | `submission_date > watermark` | 49,503 on first run | Normal operation |
 
 ```powershell
-py pipeline.py --mode full
-py pipeline.py --mode historical
-py pipeline.py --mode incremental     # the default
+py scripts/pipeline.py --mode full
+py scripts/pipeline.py --mode historical
+py scripts/pipeline.py --mode incremental     # the default
 ```
 
 In Airflow the same three are a `load_mode` Param rendered as a dropdown.

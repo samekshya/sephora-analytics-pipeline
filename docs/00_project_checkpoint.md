@@ -1,4 +1,4 @@
-# CLAUDE.md — Sephora Reviews Data Engineering Capstone
+# Project checkpoint — Sephora Reviews Data Engineering Capstone
 
 **This file is the source of truth and the running checkpoint for this project.**
 Update the Status table and the Measured Numbers section at the end of every stage.
@@ -32,7 +32,7 @@ tasks / 33 edges to **15 / 21** by replacing the failure watcher with a teardown
 | Screenshots | The three the deck uses are **current** (`airflow_dag_graph`, `chart_price_rating`, `chart_price_spread`). The original four are **still STALE** and now feed only `build_deck.ps1` |
 | PowerPoint | `build_deck.ps1` → `presentation/output/*.pptx|pdf` is **superseded**: eight slides, pre-D24/D25, stale captures. Kept as the path to an editable Office file if one is ever required |
 
-### Working conventions the user expects
+### Working conventions
 
 - **Git**: work on a phase branch, merge to `main` when the phase is done.
   Match the existing log's voice: imperative sentences that say what changed and why
@@ -47,10 +47,11 @@ tasks / 33 edges to **15 / 21** by replacing the failure watcher with a teardown
 ### Repo map
 
 ```
-explore.py          stage 1 — profiling, 14 checks, prints a report (only script allowed print())
-clean.py            stage 2 — data/raw/*.csv → data/processed/*.csv, drops rows never columns (D14)
-ingest.py           stage 3 — COPY data/processed → raw schema, asserts counts against clean.py
-pipeline.py         local runner: --mode full | historical | incremental
+scripts/            the four pipeline stages, in order:
+  explore.py        stage 1 — profiling, 14 checks, prints a report (only script allowed print())
+  clean.py          stage 2 — data/raw/*.csv → data/processed/*.csv, drops rows never columns (D14)
+  ingest.py         stage 3 — COPY data/processed → raw schema, asserts counts against clean.py
+  pipeline.py       local runner: --mode full | historical | incremental
 etl/                extract · transform · reconcile · quality · load · staging  (2-space indent)
 dags/               sephora_dw_pipeline_staged.py — the 15-task DAG
 sql/init/           create both databases
@@ -116,7 +117,7 @@ defaults. Source CSVs are **not** in git — `data/README.md` says where to get 
   historical is a baseline-rebuild tool, not something you orchestrate, and
   against an already-full warehouse it inserts nothing and reads as a broken
   run. It is still in `etl.extract.LOAD_MODES` and still runs locally with
-  `py pipeline.py --mode historical`.
+  `py scripts/pipeline.py --mode historical`.
 - **`cleanup_staging` showing green on a FAILED Airflow run** is the intended
   state. It is a **teardown**: it runs after failures so staging is not stranded,
   and Airflow excludes it from run-state calculation so it cannot report success
@@ -214,7 +215,7 @@ Streamlit dashboard (one page, live connection)
 ```
 
 Orchestrated by `dags/sephora_dw_pipeline_staged.py` (15 tasks) or run locally with
-`pipeline.py --mode full|historical|incremental`.
+`scripts/pipeline.py --mode full|historical|incremental`.
 
 Grain of `fact_reviews`: **one row per review.**
 
@@ -259,7 +260,7 @@ Indexes on all four fact FK columns. **No `brand_key` on the fact table** (D11).
 
 | Stage | State |
 |---|---|
-| 0. Project plan + CLAUDE.md | Done |
+| 0. Project plan + checkpoint | Done |
 | 1. Explore (`explore.py`, problem statement doc) | **Done** — 14 checks, all run clean; findings in `docs/02_data_quality_findings.md`, decisions D1–D13 in `docs/09_decision_log.md` |
 | 2. Clean (`clean.py` → `data/processed/`) | **Done** — run end-to-end in 24s; `data/processed/products.csv` (8.1 MB) and `reviews.csv` (546.7 MB) |
 | 3. OLTP raw + 3NF + staging, `ingest.py` | **Done** — 15 migrations applied, reconciliation clean, 0 row gap end to end |

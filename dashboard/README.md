@@ -255,10 +255,10 @@ docker exec leapfrog_sephora_postgres psql -U postgres -d sephora_dw -c `
   "DELETE FROM dw.fact_reviews WHERE submission_date >= '2023-01-01'"
 
 # Starting from an empty or partial warehouse instead — ~2 min:
-py pipeline.py --mode historical
+py scripts/pipeline.py --mode historical
 ```
 
-`py pipeline.py --mode historical` **does not reset a full warehouse.** Every
+`py scripts/pipeline.py --mode historical` **does not reset a full warehouse.** Every
 load is `ON CONFLICT DO NOTHING` and nothing in the pipeline truncates, so
 running it against 1,093,371 rows inserts 0 and leaves the count exactly where
 it was — the property that makes the pipeline safe to re-run is the same one

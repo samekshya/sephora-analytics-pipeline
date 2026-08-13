@@ -3,9 +3,9 @@ pipeline.py
 -----------
 Local orchestration of the ETL package: sephora_oltp (staging) -> sephora_dw.
 
-  py pipeline.py --mode full          # every review, no date bound
-  py pipeline.py --mode historical    # demo baseline: reviews before 2023-01-01
-  py pipeline.py --mode incremental   # only reviews after the watermark
+  py scripts/pipeline.py --mode full          # every review, no date bound
+  py scripts/pipeline.py --mode historical    # demo baseline: reviews before 2023-01-01
+  py scripts/pipeline.py --mode incremental   # only reviews after the watermark
 
 The Airflow DAG runs the same etl/ functions in the same order; this script
 exists so the pipeline can be run and debugged without a scheduler in the way.
@@ -22,13 +22,22 @@ Stage order is forced by foreign keys, not preference:
 import argparse
 import logging
 import os
+import sys
 import time
 from datetime import datetime
 
 import psycopg2
 from dotenv import load_dotenv
 
-from etl.extract import (
+# This script lives in scripts/ but the etl package sits at the repository
+# root, so the root has to be on the path before the imports below. Anchoring
+# on __file__ rather than the working directory means the script runs the same
+# from anywhere -- setup.ps1, an IDE, or a shell already inside scripts/.
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
+
+from etl.extract import (  # noqa: E402  (must follow the sys.path bootstrap)
   extract_brands, extract_products, extract_customers,
   extract_reviewer_profiles, extract_date_bounds,
   extract_reviews_for_mode, extract_lookup_dim, extract_brand_lookup,
@@ -61,7 +70,7 @@ def parse_args():
   return parser.parse_args()
 
 
-LOG_DIR = "logs"
+LOG_DIR = os.path.join(REPO_ROOT, "logs")
 os.makedirs(LOG_DIR, exist_ok=True)
 
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -77,7 +86,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-load_dotenv()
+load_dotenv(os.path.join(REPO_ROOT, ".env"))
 
 OLTP_DB_CONFIG = dict(
   host=os.getenv("OLTP_DB_HOST"),

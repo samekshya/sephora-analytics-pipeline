@@ -774,7 +774,7 @@ relationship. Separate panels let each tail be read on its own scale.
 
 Rendering the price chart exposed that **`rating_stddev` is not monotonic**. It falls
 1.2211 → 1.0996 through `$50–100` and then **widens again to 1.1366** above $100. This
-document, `README.md` and `CLAUDE.md` all asserted it "falls steadily as price rises",
+document, `README.md` and the project checkpoint all asserted it "falls steadily as price rises",
 each of them directly beneath a table showing otherwise. Corrected everywhere. The
 accurate finding is stronger: **$50–100 is the sweet spot on both measures** — best
 rated *and* most agreed upon — and the priciest band regresses on both at once.

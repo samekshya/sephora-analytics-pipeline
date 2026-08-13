@@ -1,3 +1,7 @@
+# --- Local scratch copy of the checkpoint. The tracked one, which is the
+#     version that counts, is docs/00_project_checkpoint.md ---
+CLAUDE.md
+
 # --- Secrets ---
 .env
 *.env
